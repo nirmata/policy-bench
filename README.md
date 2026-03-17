@@ -13,7 +13,7 @@ Install the following and ensure they are on your PATH (unless noted):
 | **Git** | Clone this repo |
 | **Python 3** (3.9+) | Run the validation script |
 | **PyYAML** | `pip install pyyaml` (required by the validator) |
-| **nctl** | Run conversions with NPA (optional if you only compare other AIs) |
+| **nctl** | Run conversions with NPA; run **nctl login** first (optional if you only compare other AIs) |
 | **kubectl** | Used by validator for schema dry-run (optional if no cluster) |
 | **kyverno CLI** | Optional: only if you add semantic validation (e.g. `kyverno test`) |
 

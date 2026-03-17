@@ -7,6 +7,9 @@ venv/
 # OS
 .DS_Store
 
+# nctl conversion intermediate workspace (skill writes requirements + policy here, then copies to output/converted.yaml)
+*-vpol/
+
 # Optional: uncomment to avoid committing generated output and results
 # output/*.yaml
 # output/**/*.yaml

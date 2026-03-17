@@ -51,7 +51,8 @@ convert-policies/
 ├── results/              # Validation results (JSON) go here
 ├── sample-policies/      # Example legacy policies (ClusterPolicy YAMLs)
 ├── test-resources/       # Test resources (e.g. Pods) for running policies
-└── kyverno-tests/       # Kyverno CLI test (cli.kyverno.io Test + resources); runs by default unless --skip-kyverno-test
+├── kyverno-tests/        # Kyverno CLI test (cli.kyverno.io Test + resources); runs by default unless --skip-kyverno-test
+└── run-nctl-conversion.sh # Run nctl AI conversion with full logging (nctl version + output) to verify skill loading
 ```
 
 ---
@@ -103,8 +104,20 @@ Replace `input/my-policy.yaml` with your actual input path. The **output** shoul
 
 Use this step when you want to **test** the nctl AI conversion feature. It converts your policy using nctl’s AI mechanism.
 
+**To log the nctl version and capture all nctl AI output** (so you can verify the conversion skill was loaded), use the helper script:
+
 ```bash
-nctl ai --allowed-dirs "$(pwd)" --prompt "Convert the policy in input/require-resource-limits.yaml to a Kyverno ValidatingPolicy (Kyverno 1.16+) using CEL-based validation where appropriate. Write the converted policy to output/converted.yaml."
+./run-nctl-conversion.sh
+# Or with your own input file:
+./run-nctl-conversion.sh input/my-policy.yaml
+```
+
+The script writes **nctl version** and the **full nctl ai console output** to `results/nctl_conversion_<timestamp>.log`. Check that log for lines like `Reading file from .../converting-policies/SKILL.md` or `policy-skills` to confirm the conversion skill was loaded and used. The script uses **`--skip-permission-checks`** so nctl does not prompt for confirmation (e.g. "Does this capture the policy intent?") and the conversion can run non-interactively (e.g. in CI or when there is no TTY).
+
+To run the conversion without the script (no log file). Add **`--skip-permission-checks`** if you need non-interactive runs:
+
+```bash
+nctl ai --allowed-dirs "$(pwd)" --prompt "Convert the policy in input/require-resource-limits.yaml to a Kyverno ValidatingPolicy (Kyverno 1.16+) using CEL-based validation where appropriate. Write the converted policy to output/converted.yaml." --skip-permission-checks
 ```
 
 If you are converting your own policy (from step 2), replace `input/require-resource-limits.yaml` in the prompt with your input path (e.g. `input/my-policy.yaml`). Ensure the converted policy is saved to `output/converted.yaml` (nctl or you may need to copy it there).
@@ -143,7 +156,9 @@ You can also run the test manually:
 kyverno test kyverno-tests/
 ```
 
-The repo includes a minimal `kyverno-tests/` for the sample policy: it expects the converted policy in `output/converted.yaml` with `metadata.name: require-resource-limits`. If your converter uses a different policy name, edit `kyverno-tests/kyverno-test.yaml` to match. When the test runs, it checks that the converted policy **passes** on compliant resources and **fails** on non-compliant ones—so you can tell if the conversion is accurate, not just valid YAML. To use a different test directory, pass **--kyverno-test-dir &lt;dir&gt;** (default is `kyverno-tests`).
+The repo includes a minimal `kyverno-tests/` for the sample policy: it expects the converted policy in `output/converted.yaml`. The test's `results.policy` must match the policy's `metadata.name` (e.g. `require-cpu-memory-limits` for nctl output). If your converter uses a different policy name, edit `kyverno-tests/kyverno-test.yaml` to match. When the test runs, it checks that the converted policy **passes** on compliant resources and **fails** on non-compliant ones—so you can tell if the conversion is accurate, not just valid YAML. To use a different test directory, pass **--kyverno-test-dir &lt;dir&gt;** (default is `kyverno-tests`).
+
+**Note:** As of Kyverno CLI 1.17, the `kyverno test` command does not yet support the ValidatingPolicy 1.16+ schema (e.g. `spec.admission`, `spec.assertions`). If you see **Semantic: SKIP** with that message, the validator is treating it as a known limitation—schema and intent still validate your conversion. Use **--skip-kyverno-test** to skip the step explicitly.
 
 ### 8. Compare with another AI (Cursor, Claude, etc.)
 

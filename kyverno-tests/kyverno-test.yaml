@@ -1,5 +1,6 @@
 # Kyverno CLI test for the converted policy (output/converted.yaml).
-# The converted policy should have metadata.name: require-resource-limits for this test to match.
+# The results.policy name must match the converted policy's metadata.name.
+# nctl conversion uses name "require-cpu-memory-limits"; adjust if you use a different converter.
 # See: https://kyverno.io/docs/kyverno-cli/usage/test/
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test
@@ -10,13 +11,15 @@ policies:
 resources:
   - resources.yaml
 results:
-  - policy: require-resource-limits
-    rule: check-resource-limits
-    resource: pod-with-limits
+  - policy: require-cpu-memory-limits
+    rule: ""
+    resources:
+      - pod-with-limits
     kind: Pod
     result: pass
-  - policy: require-resource-limits
-    rule: check-resource-limits
-    resource: pod-without-limits
+  - policy: require-cpu-memory-limits
+    rule: ""
+    resources:
+      - pod-without-limits
     kind: Pod
     result: fail

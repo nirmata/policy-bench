@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Policy Conversion Benchmark</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  :root { --bg: #0d1117; --fg: #c9d1d9; --card: #161b22; --border: #30363d; --accent: #58a6ff; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         background: var(--bg); color: var(--fg); padding: 2rem; }
+  h1 { color: var(--accent); margin-bottom: 0.5rem; }
+  .meta { color: #8b949e; margin-bottom: 2rem; font-size: 0.9rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; }
+  .card h2 { font-size: 1.1rem; margin-bottom: 1rem; color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--accent); font-weight: 600; }
+  canvas { max-height: 300px; }
+  .filter select { background: var(--card); color: var(--fg); border: 1px solid var(--border);
+                   padding: 0.4rem 0.8rem; border-radius: 4px; margin-right: 0.5rem; }
+</style>
+</head>
+<body>
+<h1>Policy Conversion Benchmark</h1>
+<p class="meta">Generated: {{ agg.generated_at }}</p>
+
+<div class="grid">
+  <div class="card">
+    <h2>Leaderboard</h2>
+    <table>
+      <tr><th>Rank</th><th>Tool</th><th>Pass Rate</th><th>Avg Time</th><th>Cost</th><th>Diff</th><th>Score</th></tr>
+      {% for e in leaderboard %}
+      <tr>
+        <td>{{ e.rank }}</td><td>{{ e.tool }}</td>
+        <td>{{ "%.0f%%" | format(e.pass_rate * 100) }}</td>
+        <td>{{ "%.1fs" | format(e.avg_time) if e.avg_time else "-" }}</td>
+        <td>{{ "$%.4f" | format(e.avg_cost) if e.avg_cost else "-" }}</td>
+        <td>{{ "%.2f" | format(e.avg_diff_score) if e.avg_diff_score is not none else "-" }}</td>
+        <td>{{ "%.2f" | format(e.composite_score) }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Pass Rate (%)</h2>
+    <canvas id="passChart"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>Avg Conversion Time (s)</h2>
+    <canvas id="timeChart"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>Composite Score</h2>
+    <canvas id="scoreChart"></canvas>
+  </div>
+</div>
+
+<div class="card">
+  <h2>All Results</h2>
+  <div class="filter">
+    <select id="toolFilter" onchange="filterTable()"><option value="">All tools</option></select>
+    <select id="trackFilter" onchange="filterTable()"><option value="">All tracks</option></select>
+  </div>
+  <table id="resultsTable">
+    <thead><tr><th>Tool</th><th>Policy</th><th>Track</th><th>Status</th><th>Time</th><th>Cost</th><th>Diff</th></tr></thead>
+    <tbody>
+    {% for r in agg.results %}
+    <tr>
+      <td>{{ r.tool }}</td>
+      <td>{{ r.policy_id }}</td>
+      <td>{{ r.track }}</td>
+      <td>{{ "PASS" if r.success else "FAIL" }}</td>
+      <td>{{ "%.1fs" | format(r.conversion_time_seconds) if r.conversion_time_seconds else "-" }}</td>
+      <td>{{ "$%.4f" | format(r.cost_usd) if r.cost_usd else "-" }}</td>
+      <td>{{ "%.2f" | format(r.diff_score) if r.diff_score is not none else "-" }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+const tools = {{ leaderboard | map(attribute='tool') | list | tojson }};
+const passRates = {{ leaderboard | map(attribute='pass_rate') | list | tojson }}.map(x => x * 100);
+const times = {{ leaderboard | map(attribute='avg_time') | list | tojson }}.map(x => x || 0);
+const scores = {{ leaderboard | map(attribute='composite_score') | list | tojson }};
+
+const chartOpts = { responsive: true, plugins: { legend: { display: false } } };
+const colors = ['#58a6ff','#f78166','#7ee787','#d2a8ff','#79c0ff','#ffa657'];
+
+function mkBar(id, labels, data, label) {
+  new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: { labels, datasets: [{ label, data, backgroundColor: colors.slice(0, labels.length) }] },
+    options: chartOpts
+  });
+}
+mkBar('passChart', tools, passRates, 'Pass Rate %');
+mkBar('timeChart', tools, times, 'Avg Time (s)');
+mkBar('scoreChart', tools, scores, 'Composite Score');
+
+const tbl = document.getElementById('resultsTable');
+const rows = tbl.querySelectorAll('tbody tr');
+const toolSet = new Set(), trackSet = new Set();
+rows.forEach(r => { toolSet.add(r.cells[0].textContent); trackSet.add(r.cells[2].textContent); });
+const tf = document.getElementById('toolFilter'), tkf = document.getElementById('trackFilter');
+toolSet.forEach(t => { const o = document.createElement('option'); o.value=t; o.textContent=t; tf.appendChild(o); });
+trackSet.forEach(t => { const o = document.createElement('option'); o.value=t; o.textContent=t; tkf.appendChild(o); });
+
+function filterTable() {
+  const tv = tf.value, tkv = tkf.value;
+  rows.forEach(r => {
+    const show = (!tv || r.cells[0].textContent===tv) && (!tkv || r.cells[2].textContent===tkv);
+    r.style.display = show ? '' : 'none';
+  });
+}
+</script>
+</body>
+</html>

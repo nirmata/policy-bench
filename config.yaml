@@ -1,0 +1,77 @@
+tools:
+  nctl:
+    type: cli
+    command: "nctl ai"
+    enabled: true
+  claude:
+    type: cli
+    command: "claude -p"
+    model: "claude-sonnet-4-20250514"
+    api_key_env: "ANTHROPIC_API_KEY"
+    enabled: true
+    # Priority: claude CLI > Anthropic API (ANTHROPIC_API_KEY)
+  cursor:
+    type: cli
+    command: "cursor -p"
+    enabled: true
+    # Priority: cursor CLI (--force) > manual (poll for output file)
+
+# Tracks define the conversion source format → target mapping.
+# The expected_output_kind per policy in index.yaml can override the default.
+tracks:
+  cluster-policy:
+    input_kind: ClusterPolicy
+    output_kinds:
+      - ValidatingPolicy
+      - MutatingPolicy
+      - GeneratingPolicy
+      - ImageValidatingPolicy
+    default_output_kind: ValidatingPolicy
+    description: "Kyverno ClusterPolicy (v1) to 1.16+ policy types"
+  gatekeeper:
+    input_kind: ConstraintTemplate
+    output_kinds:
+      - ValidatingPolicy
+    default_output_kind: ValidatingPolicy
+    description: "Gatekeeper ConstraintTemplate + Constraint to Kyverno ValidatingPolicy"
+  opa:
+    input_kind: Rego
+    output_kinds:
+      - ValidatingPolicy
+    default_output_kind: ValidatingPolicy
+    description: "OPA/Rego policy to Kyverno ValidatingPolicy"
+  sentinel:
+    input_kind: SentinelPolicy
+    output_kinds:
+      - ValidatingPolicy
+    default_output_kind: ValidatingPolicy
+    description: "HashiCorp Sentinel policy to Kyverno ValidatingPolicy"
+  cleanup:
+    input_kind: CleanupPolicy
+    output_kinds:
+      - DeletingPolicy
+    default_output_kind: DeletingPolicy
+    description: "Kyverno CleanupPolicy to DeletingPolicy (1.16+)"
+
+# Task types supported by the benchmark
+task_types:
+  convert:
+    description: "Convert an existing policy from source format to Kyverno 1.16+"
+    requires_input: true
+    evaluations: [schema, intent, semantic, diff]
+  generate:
+    description: "Generate a new policy from a natural-language description"
+    requires_input: false
+    evaluations: [schema, semantic]
+
+evaluation:
+  skip_kyverno_test: false
+  kubectl_dry_run: true
+  timeout_seconds: 120
+
+leaderboard:
+  weights:
+    pass_rate: 0.5
+    speed: 0.2
+    diff_score: 0.2
+    cost: 0.1

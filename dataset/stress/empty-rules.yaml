@@ -1,0 +1,9 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: empty-rules-policy
+  annotations:
+    policies.kyverno.io/title: Empty Rules Policy
+spec:
+  validationFailureAction: Enforce
+  rules: []

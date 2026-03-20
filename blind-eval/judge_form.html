@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Blind Evaluation — Policy Conversion</title>
+<style>
+  :root { --bg: #0d1117; --fg: #c9d1d9; --card: #161b22; --border: #30363d; --accent: #58a6ff; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         background: var(--bg); color: var(--fg); padding: 2rem; max-width: 900px; margin: 0 auto; }
+  h1 { color: var(--accent); margin-bottom: 0.5rem; }
+  .info { color: #8b949e; margin-bottom: 2rem; font-size: 0.9rem; line-height: 1.5; }
+  .submission { background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+                padding: 1.5rem; margin-bottom: 1.5rem; }
+  .submission h2 { font-size: 1rem; color: var(--accent); margin-bottom: 1rem; }
+  .field { margin-bottom: 1rem; }
+  .field label { display: block; font-weight: 600; margin-bottom: 0.3rem; font-size: 0.9rem; }
+  .field .radios { display: flex; gap: 1rem; }
+  .field .radios label { font-weight: 400; cursor: pointer; }
+  .field textarea { width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+                    border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; resize: vertical; min-height: 60px; }
+  .actions { margin-top: 2rem; display: flex; gap: 1rem; }
+  button { background: var(--accent); color: #000; border: none; padding: 0.6rem 1.5rem;
+           border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
+  button:hover { opacity: 0.9; }
+  button.secondary { background: var(--border); color: var(--fg); }
+  #loadArea { margin-bottom: 2rem; }
+  #loadArea input[type=file] { color: var(--fg); }
+  pre { background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+        padding: 1rem; font-size: 0.8rem; overflow: auto; max-height: 300px; margin-bottom: 1rem;
+        white-space: pre-wrap; word-break: break-word; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<h1>Blind Evaluation</h1>
+<p class="info">
+  Score each anonymized submission on correctness, completeness, and readability (1–5 scale).
+  Tool identities are hidden. After scoring, export as JSON and run <code>reveal.py</code>.
+</p>
+
+<div id="loadArea">
+  <p><strong>Load anonymized submissions:</strong></p>
+  <p class="info">Select all .yaml files from <code>blind-eval/anonymized/</code></p>
+  <input type="file" id="fileInput" multiple accept=".yaml,.yml">
+</div>
+
+<div id="submissions"></div>
+
+<div class="actions hidden" id="actionBar">
+  <button onclick="exportScores()">Export scores.json</button>
+  <button class="secondary" onclick="clearAll()">Clear</button>
+</div>
+
+<script>
+const submissions = [];
+
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+  const container = document.getElementById('submissions');
+  container.innerHTML = '';
+  submissions.length = 0;
+
+  for (const file of e.target.files) {
+    const text = await file.text();
+    const anonId = file.name.replace(/\.(yaml|yml)$/, '');
+    submissions.push({ anon_id: anonId, content: text });
+
+    const div = document.createElement('div');
+    div.className = 'submission';
+    div.id = `sub-${anonId}`;
+    div.innerHTML = `
+      <h2>${anonId}</h2>
+      <pre>${escapeHtml(text)}</pre>
+      ${ratingField(anonId, 'correctness', 'Correctness (1=wrong, 5=perfect)')}
+      ${ratingField(anonId, 'completeness', 'Completeness (1=missing rules, 5=all preserved)')}
+      ${ratingField(anonId, 'readability', 'Readability (1=messy, 5=clean & idiomatic)')}
+      <div class="field">
+        <label>Notes</label>
+        <textarea id="${anonId}-notes" placeholder="Optional comments..."></textarea>
+      </div>
+    `;
+    container.appendChild(div);
+  }
+
+  if (submissions.length > 0) {
+    document.getElementById('actionBar').classList.remove('hidden');
+  }
+});
+
+function ratingField(id, name, label) {
+  let radios = '';
+  for (let i = 1; i <= 5; i++) {
+    radios += `<label><input type="radio" name="${id}-${name}" value="${i}"> ${i}</label>`;
+  }
+  return `<div class="field"><label>${label}</label><div class="radios">${radios}</div></div>`;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function getVal(id, name) {
+  const el = document.querySelector(`input[name="${id}-${name}"]:checked`);
+  return el ? parseInt(el.value) : null;
+}
+
+function exportScores() {
+  const scores = submissions.map(s => ({
+    anon_id: s.anon_id,
+    correctness: getVal(s.anon_id, 'correctness'),
+    completeness: getVal(s.anon_id, 'completeness'),
+    readability: getVal(s.anon_id, 'readability'),
+    notes: (document.getElementById(`${s.anon_id}-notes`) || {}).value || '',
+  }));
+
+  const blob = new Blob([JSON.stringify(scores, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'scores.json';
+  a.click();
+}
+
+function clearAll() {
+  document.getElementById('submissions').innerHTML = '';
+  document.getElementById('actionBar').classList.add('hidden');
+  document.getElementById('fileInput').value = '';
+  submissions.length = 0;
+}
+</script>
+</body>
+</html>

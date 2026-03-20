@@ -1,255 +1,109 @@
 #!/usr/bin/env python3
 """
-Validate a converted policy: schema (valid YAML, Kyverno 1.16+ kind) and intent (preserves match/action).
-When validating a conversion, the input policy is validated first (must be a valid legacy policy).
+Validate a converted or generated policy.
+
+Three modes:
+  1. **Input-only** — validate a source policy before converting.
+  2. **Conversion** (input + output) — schema + intent + semantic + diff.
+  3. **Generation / output-only** (output only, no input) — schema + semantic.
 
 Usage:
-  # Validate input policy only (run before converting):
+  # Validate input policy only:
   python3 validate.py --input input/my-policy.yaml
 
-  # Validate conversion (input + output); input is validated first:
+  # Validate conversion (input + output):
   python3 validate.py --input input/require-resource-limits.yaml --output output/converted.yaml --tool nctl
 
-  # Kyverno CLI semantic test runs by default; skip it with:
-  python3 validate.py --input input/require-resource-limits.yaml --output output/converted.yaml --tool nctl --skip-kyverno-test
+  # Validate generated policy (output only — no source to compare):
+  python3 validate.py --output output/generated-vpol.yaml --tool claude
+
+  # Skip Kyverno CLI semantic test:
+  python3 validate.py --input input/policy.yaml --output output/policy.yaml --tool nctl --skip-kyverno-test
 
 Results are written to results/run_<timestamp>_<tool>.json when --output is given.
 """
 
 import argparse
 import json
-import re
-import shutil
-import subprocess
 import sys
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-
-
-def _strip_ansi(text: str) -> str:
-    """Remove ANSI escape sequences for cleaner log/output."""
-    return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 try:
     import yaml
 except ImportError:
     yaml = None
 
-# Reuse legacy policy validation for input (before conversion)
-def _load_validate_legacy():
-    """Load validate_legacy_policy from validate-legacy.py (filename has hyphen)."""
-    import importlib.util
-    path = Path(__file__).resolve().parent / "validate-legacy.py"
-    if not path.exists():
-        return None
-    spec = importlib.util.spec_from_file_location("validate_legacy", path)
-    if spec is None or spec.loader is None:
-        return None
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return getattr(mod, "validate_legacy_policy", None)
-
-
-validate_legacy_policy = _load_validate_legacy()
-
-VALIDATING_POLICY_KINDS = {"ValidatingPolicy", "MutatingPolicy", "GeneratingPolicy", "DeletingPolicy", "ImageValidatingPolicy"}
-POLICIES_APIVERSION_PREFIX = "policies.kyverno.io/"
-
-
-def validate_schema(output_path: Path, use_kubectl: bool = True) -> tuple[bool, list[str]]:
-    """Check output is valid YAML and Kyverno 1.16+ policy. Returns (passed, errors)."""
-    errors: list[str] = []
-    if not yaml:
-        return (False, ["PyYAML not installed. pip install pyyaml"])
-    try:
-        raw = output_path.read_text(encoding="utf-8", errors="replace")
-        doc = yaml.safe_load(raw)
-    except Exception as e:
-        return (False, [f"Invalid YAML: {e}"])
-    if not doc or not isinstance(doc, dict):
-        return (False, ["Empty or non-dict YAML"])
-    kind = doc.get("kind") or ""
-    api_version = doc.get("apiVersion") or ""
-    if kind not in VALIDATING_POLICY_KINDS:
-        errors.append(f"Expected kind in {sorted(VALIDATING_POLICY_KINDS)}, got {kind!r}")
-    if not api_version.startswith(POLICIES_APIVERSION_PREFIX):
-        errors.append(f"Expected apiVersion starting with {POLICIES_APIVERSION_PREFIX!r}, got {api_version!r}")
-    if errors:
-        return (False, errors)
-    if use_kubectl and shutil.which("kubectl"):
-        proc = subprocess.run(
-            ["kubectl", "apply", "-f", str(output_path), "--dry-run=client"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if proc.returncode != 0:
-            err = (proc.stderr or proc.stdout or "").strip().lower()
-            if "connection refused" in err or "no matches for kind" in err or "ensure crds" in err:
-                pass  # Skip: no cluster or CRDs
-            else:
-                errors.append(f"kubectl dry-run failed: {(proc.stderr or proc.stdout or '').strip()[:300]}")
-    return (len(errors) == 0, errors)
-
-
-def run_kyverno_test(
-    test_dir: Path,
-    output_policy_name: str | None = None,
-    timeout_sec: int = 60,
-) -> tuple[bool, list[str], bool]:
-    """Run 'kyverno test <test_dir>'. Returns (passed, errors, skipped).
-    If output_policy_name is set, patches the test file so results.policy matches the converted policy's metadata.name (avoids 'Not found' when converter uses a different name)."""
-    if not shutil.which("kyverno"):
-        return False, [], True
-    test_dir = test_dir.resolve()
-    if not test_dir.is_dir():
-        return False, [f"Kyverno test dir not found: {test_dir}"], False
-
-    run_dir = test_dir
-    cleanup_dir: Path | None = None
-    if output_policy_name and yaml:
-        # Patch test so results.policy matches the actual converted policy name (nctl may produce require-pod-resource-limits, require-cpu-memory-limits, etc.)
-        repo_root = test_dir.parent
-        try:
-            cleanup_dir = Path(tempfile.mkdtemp(prefix="kyverno_test_", dir=str(repo_root)))
-            resources_src = test_dir / "resources.yaml"
-            if resources_src.exists():
-                shutil.copy(resources_src, cleanup_dir / "resources.yaml")
-            test_file = test_dir / "kyverno-test.yaml"
-            if not test_file.exists():
-                for f in test_dir.iterdir():
-                    if f.suffix in (".yaml", ".yml") and f.name != "resources.yaml":
-                        test_file = f
-                        break
-            if test_file.exists():
-                doc = yaml.safe_load(test_file.read_text(encoding="utf-8"))
-                if isinstance(doc, dict) and "results" in doc:
-                    for r in doc["results"]:
-                        if isinstance(r, dict) and "policy" in r:
-                            r["policy"] = output_policy_name
-                (cleanup_dir / test_file.name).write_text(yaml.dump(doc, default_flow_style=False, sort_keys=False), encoding="utf-8")
-                run_dir = cleanup_dir
-        except Exception:
-            if cleanup_dir and cleanup_dir.exists():
-                shutil.rmtree(cleanup_dir, ignore_errors=True)
-            cleanup_dir = None
-
-    try:
-        proc = subprocess.run(
-            ["kyverno", "test", str(run_dir)],
-            cwd=str(run_dir),
-            capture_output=True,
-            text=True,
-            timeout=timeout_sec,
-        )
-        if proc.returncode == 0:
-            return True, [], False
-        # Full output: stdout often has the table, stderr the summary (or both combined)
-        raw = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
-        out = _strip_ansi(raw)
-        # If CLI rejects the policy with "unknown field" / "Invalid value", treat as skip
-        if out and ("unknown field" in out or "Invalid value" in out) and "failed to load" in out.lower():
-            return False, ["Kyverno CLI 'test' command does not yet support ValidatingPolicy 1.16+ schema (e.g. spec.admission, spec.assertions). Use --skip-kyverno-test for now."], True
-        # Return full kyverno test output so user sees which tests failed and why (table + summary)
-        if not out:
-            out = "kyverno test exited non-zero (no output)"
-        return False, [out], False
-    finally:
-        if cleanup_dir and cleanup_dir.exists():
-            shutil.rmtree(cleanup_dir, ignore_errors=True)
-
-
-def _kinds_from_cluster_policy(doc: dict) -> set[str]:
-    kinds = set()
-    for rule in (doc.get("spec") or {}).get("rules") or []:
-        for block in (rule.get("match") or {}).get("any") or (rule.get("match") or {}).get("all") or []:
-            for k in (block.get("resources") or {}).get("kinds") or []:
-                kk = (k or "").strip().lower()
-                if kk:
-                    kinds.add(kk + "s" if not kk.endswith("s") else kk)
-    return kinds
-
-
-def _validation_action_from_cluster_policy(doc: dict) -> str:
-    return (doc.get("spec") or {}).get("validationFailureAction") or ""
-
-
-def _kinds_from_validating_policy(doc: dict) -> set[str]:
-    kinds = set()
-    for rule in (doc.get("spec") or {}).get("rules") or []:
-        for block in (rule.get("match") or {}).get("any") or (rule.get("match") or {}).get("all") or []:
-            for k in (block.get("resources") or {}).get("kinds") or []:
-                kk = (k or "").strip().lower()
-                if kk:
-                    kinds.add(kk + "s" if not kk.endswith("s") else kk)
-    return kinds
-
-
-def _validation_actions_from_validating_policy(doc: dict) -> list:
-    return list((doc.get("spec") or {}).get("validationActions") or [])
-
-
-def validate_intent_cluster_policy(input_doc: dict, output_doc: dict) -> tuple[bool, list[str]]:
-    """Check ValidatingPolicy preserves intent of ClusterPolicy. Returns (passed, errors)."""
-    errors: list[str] = []
-    in_kinds = _kinds_from_cluster_policy(input_doc)
-    out_kinds = _kinds_from_validating_policy(output_doc)
-    if in_kinds and out_kinds and in_kinds != out_kinds:
-        errors.append(f"Match kinds mismatch: source {sorted(in_kinds)}, output {sorted(out_kinds)}")
-    in_action = _validation_action_from_cluster_policy(input_doc)
-    out_actions = _validation_actions_from_validating_policy(output_doc)
-    if in_action == "Enforce" and out_actions and "Deny" not in out_actions and "Enforce" not in out_actions:
-        errors.append(f"Validation action mismatch: source was Enforce, output has {out_actions} (expected Deny)")
-    if in_action == "Audit" and out_actions and "Audit" not in out_actions:
-        errors.append(f"Validation action mismatch: source was Audit, output has {out_actions}")
-    return (len(errors) == 0, errors)
+from evaluators.evaluate import evaluate, validate_input
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate converted policy (schema + intent). Validates input policy first when both input and output are given.")
-    parser.add_argument("--input", required=True, help="Path to original policy (input)")
-    parser.add_argument("--output", help="Path to converted policy (output). Omit to validate input only (run before converting).")
-    parser.add_argument("--tool", default="unknown", help="Tool label for results (e.g. nctl, cursor, claude)")
+    parser = argparse.ArgumentParser(
+        description="Validate converted or generated policy (schema + intent + semantic). "
+        "Omit --input for generation-only validation (schema + semantic)."
+    )
+    parser.add_argument(
+        "--input",
+        required=False,
+        help="Path to original policy (omit for generation-only validation)",
+    )
+    parser.add_argument(
+        "--output",
+        help="Path to converted/generated policy. Omit to validate input only.",
+    )
+    parser.add_argument(
+        "--tool", default="unknown", help="Tool label for results (e.g. nctl, cursor, claude)"
+    )
+    parser.add_argument("--track", default=None, help="Conversion track (auto-detected if omitted)")
     parser.add_argument("--no-kubectl", action="store_true", help="Skip kubectl dry-run")
-    parser.add_argument("--skip-kyverno-test", action="store_true", help="Skip Kyverno CLI semantic test (by default it runs when kyverno-tests/ exists and kyverno is on PATH)")
-    parser.add_argument("--kyverno-test-dir", metavar="DIR", default="kyverno-tests", help="Directory for 'kyverno test' (default: kyverno-tests). Ignored if --skip-kyverno-test is set.")
+    parser.add_argument(
+        "--skip-kyverno-test",
+        action="store_true",
+        help="Skip Kyverno CLI semantic test",
+    )
+    parser.add_argument(
+        "--kyverno-test-dir",
+        metavar="DIR",
+        default="kyverno-tests",
+        help="Kyverno test directory: repo-relative (default: kyverno-tests) or under dataset/ (e.g. imported/kyverno-tests/cp_require_labels)",
+    )
+    parser.add_argument(
+        "--expected-kind",
+        help="Expected output kind (e.g. ValidatingPolicy, MutatingPolicy)",
+    )
     args = parser.parse_args()
 
-    input_path = Path(args.input)
-    if not input_path.exists():
-        print(f"Error: input file not found: {input_path}", file=sys.stderr)
-        return 1
+    if args.input is None and args.output is None:
+        parser.error("At least one of --input or --output is required.")
 
-    input_only = args.output is None
-    if not input_only:
+    input_path: Path | None = None
+    if args.input:
+        input_path = Path(args.input)
+        if not input_path.exists():
+            print(f"Error: input file not found: {input_path}", file=sys.stderr)
+            return 1
+
+    output_path: Path | None = None
+    if args.output:
         output_path = Path(args.output)
         if not output_path.exists():
             print(f"Error: output file not found: {output_path}", file=sys.stderr)
             return 1
-    else:
-        output_path = None
 
-    if not yaml:
-        print("Error: PyYAML required. pip install pyyaml", file=sys.stderr)
-        return 1
+    # Auto-detect track from input (or default for generation)
+    track = args.track
+    if not track and input_path:
+        track = _detect_track(input_path)
+    if not track:
+        track = "cluster-policy"
 
-    # Load input doc (first document only; allow multi-doc files)
-    try:
-        raw = input_path.read_text(encoding="utf-8", errors="replace")
-        docs = list(yaml.safe_load_all(raw))
-        input_doc = docs[0] if docs else None
-    except Exception as e:
-        print(f"Error loading input YAML: {e}", file=sys.stderr)
-        return 1
-    input_doc = input_doc or {}
+    # Determine mode
+    is_generate = input_path is None and output_path is not None
+    input_only = output_path is None and input_path is not None
 
-    # --- Input-only mode: validate legacy policy and exit ---
+    # --- Input-only mode ---
     if input_only:
-        if not validate_legacy_policy:
-            print("Error: validate_legacy module not found (validate-legacy.py must be in same directory)", file=sys.stderr)
-            return 1
-        passed, errors = validate_legacy_policy(input_path, use_kubectl=not args.no_kubectl)
+        passed, errors = validate_input(track, input_path, use_kubectl=not args.no_kubectl)
         if passed:
             print("Input policy: PASS (valid legacy policy; safe to convert)")
             return 0
@@ -258,99 +112,134 @@ def main() -> int:
             print(f"  {e}", file=sys.stderr)
         return 1
 
-    # --- Full validation: validate input first, then output ---
-    input_kind = (input_doc.get("kind") or "").strip()
-    if input_kind == "ClusterPolicy" and validate_legacy_policy:
-        input_pass, input_errors = validate_legacy_policy(input_path, use_kubectl=not args.no_kubectl)
+    # --- Conversion mode: validate input first ---
+    if not is_generate and input_path:
+        input_pass, input_errors = validate_input(
+            track, input_path, use_kubectl=not args.no_kubectl
+        )
         if not input_pass:
             print("Input policy: FAIL (fix before comparing conversion output)", file=sys.stderr)
             for e in input_errors:
                 print(f"  {e}", file=sys.stderr)
             return 1
 
-    try:
-        output_doc = yaml.safe_load(output_path.read_text(encoding="utf-8", errors="replace"))
-    except Exception as e:
-        print(f"Error loading output YAML: {e}", file=sys.stderr)
-        return 1
-    output_doc = output_doc or {}
+    repo_root = Path(__file__).resolve().parent
+    rel = args.kyverno_test_dir.strip("/").replace("\\", "/")
+    if rel.startswith("imported/") or rel.startswith("local/"):
+        kyverno_test_dir = repo_root / "dataset" / rel
+    else:
+        kyverno_test_dir = repo_root / rel
+    task_type = "generate" if is_generate else "convert"
+    eval_result = evaluate(
+        track,
+        input_path,
+        output_path,
+        expected_output_kind=args.expected_kind,
+        use_kubectl=not args.no_kubectl,
+        skip_kyverno_test=args.skip_kyverno_test,
+        kyverno_test_dir=kyverno_test_dir if kyverno_test_dir.is_dir() else None,
+        task_type=task_type,
+    )
 
-    # Schema (output)
-    schema_pass, schema_errors = validate_schema(output_path, use_kubectl=not args.no_kubectl)
-
-    # Intent (only for ClusterPolicy -> ValidatingPolicy)
-    intent_pass = True
-    intent_errors: list[str] = []
-    input_kind = (input_doc.get("kind") or "").strip()
-    if input_kind == "ClusterPolicy":
-        intent_pass, intent_errors = validate_intent_cluster_policy(input_doc, output_doc)
-    # Gatekeeper could be added here later
-
+    # --- Write results JSON ---
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     results_dir = Path(__file__).resolve().parent / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
     tool_safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in args.tool)
     out_json = results_dir / f"run_{timestamp}_{tool_safe}.json"
 
-    semantic_pass: bool | None = None
-    semantic_errors: list[str] = []
-    semantic_skipped = True
-    if not getattr(args, "skip_kyverno_test", False):
-        test_dir = Path(__file__).resolve().parent / getattr(args, "kyverno_test_dir", "kyverno-tests")
-        output_policy_name = (output_doc.get("metadata") or {}).get("name") or None
-        semantic_pass, semantic_errors, semantic_skipped = run_kyverno_test(test_dir, output_policy_name=output_policy_name)
     report = {
-        "input_path": str(input_path),
+        "input_path": str(input_path) if input_path else None,
         "output_path": str(output_path),
         "tool": args.tool,
+        "track": track,
+        "task_type": task_type,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "schema_pass": schema_pass,
-        "intent_pass": intent_pass,
-        "schema_errors": schema_errors,
-        "intent_errors": intent_errors,
-        "semantic_pass": semantic_pass if not semantic_skipped else None,
-        "semantic_errors": semantic_errors,
-        "semantic_skipped": semantic_skipped,
+        **eval_result,
     }
     out_json.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
-    # Pretty validation result summary
-    print()
-    print("  📋 Validation results")
-    print("  " + "─" * 40)
-    schema_emoji = "✅" if schema_pass else "❌"
-    schema_status = "PASS" if schema_pass else "FAIL"
-    print(f"  1. Schema   {schema_emoji}  {schema_status}  — output is valid ValidatingPolicy YAML")
-    if schema_errors:
-        for e in schema_errors:
-            print(f"      └─ {e}")
+    # --- Pretty summary ---
+    schema_pass = eval_result["schema_pass"]
+    intent_pass = eval_result.get("intent_pass")
+    semantic_pass = eval_result.get("semantic_pass")
+    semantic_skipped = eval_result.get("semantic_skipped", True)
+    schema_errors = eval_result.get("schema_errors", [])
+    intent_errors = eval_result.get("intent_errors", [])
+    semantic_errors = eval_result.get("semantic_errors", [])
 
-    intent_emoji = "✅" if intent_pass else "❌"
-    intent_status = "PASS" if intent_pass else "FAIL"
-    print(f"  2. Intent   {intent_emoji}  {intent_status}  — converted policy matches source intent")
-    if intent_errors:
+    print()
+    mode_label = "Generation" if is_generate else "Conversion"
+    print(f"  {mode_label} validation results")
+    print("  " + "-" * 40)
+    print(
+        f"  1. Schema   {'PASS' if schema_pass else 'FAIL'}"
+        f"  -- output is valid Kyverno 1.16+ YAML"
+    )
+    for e in schema_errors:
+        print(f"      - {e}")
+
+    if intent_pass is None:
+        print("  2. Intent   N/A   -- skipped (generation task, no source policy)")
+    else:
+        print(
+            f"  2. Intent   {'PASS' if intent_pass else 'FAIL'}"
+            f"  -- converted policy matches source intent"
+        )
         for e in intent_errors:
-            print(f"      └─ {e}")
+            print(f"      - {e}")
 
     if semantic_skipped:
-        print(f"  3. Semantic ⏭️   SKIP   — {semantic_errors[0] if semantic_errors else 'no test dir or kyverno CLI not on PATH'}")
+        reason = semantic_errors[0] if semantic_errors else "no test dir or kyverno CLI not on PATH"
+        print(f"  3. Semantic SKIP  -- {reason}")
     else:
-        semantic_emoji = "✅" if semantic_pass else "❌"
-        semantic_status = "PASS" if semantic_pass else "FAIL"
-        print(f"  3. Semantic {semantic_emoji}  {semantic_status}  — Kyverno CLI test (policy behavior)")
-        if semantic_errors:
-            for e in semantic_errors:
-                lines = e.splitlines()
-                for i, line in enumerate(lines):
-                    prefix = "      └─ " if i == 0 else "         "
-                    print(f"{prefix}{line}")
+        print(
+            f"  3. Semantic {'PASS' if semantic_pass else 'FAIL'}"
+            f"  -- Kyverno CLI test (policy behavior)"
+        )
+        for e in semantic_errors:
+            for i, line in enumerate(e.splitlines()):
+                prefix = "      - " if i == 0 else "        "
+                print(f"{prefix}{line}")
 
-    print("  " + "─" * 40)
-    print(f"  📁 Results: {out_json}")
+    diff = eval_result.get("diff_score")
+    if diff is not None:
+        print(f"  4. Diff score: {diff}")
+
+    print("  " + "-" * 40)
+    print(f"  Results: {out_json}")
     print()
 
-    all_pass = schema_pass and intent_pass and (semantic_skipped or semantic_pass)
+    all_pass = schema_pass and (intent_pass is None or intent_pass) and (semantic_skipped or semantic_pass)
     return 0 if all_pass else 1
+
+
+def _detect_track(input_path: Path) -> str:
+    """Guess the conversion track from the input file."""
+    suffix = input_path.suffix.lower()
+    if suffix == ".rego":
+        return "opa"
+    if suffix == ".sentinel":
+        return "sentinel"
+
+    if yaml:
+        try:
+            raw = input_path.read_text(encoding="utf-8", errors="replace")
+            docs = list(yaml.safe_load_all(raw))
+            for doc in docs:
+                if not isinstance(doc, dict):
+                    continue
+                kind = (doc.get("kind") or "").strip()
+                if kind == "ClusterPolicy":
+                    return "cluster-policy"
+                if kind == "ConstraintTemplate":
+                    return "gatekeeper"
+                if kind == "CleanupPolicy":
+                    return "cleanup"
+        except Exception:
+            pass
+
+    return "cluster-policy"
 
 
 if __name__ == "__main__":

@@ -1,0 +1,87 @@
+# Curated mapping from kyverno/policies → benchmark IDs.
+# Run:  python3 scripts/sync_kyverno_policies.py
+#
+# Bump `ref` when you intentionally refresh the corpus (document in commit message).
+
+repository: https://github.com/kyverno/policies.git
+# Pinned commit on kyverno/policies main (reproducible sync). Update when refreshing.
+ref: 75a68932d86a67eea055089ec18311284877d296
+
+# Relative to repo root
+dest_policies: dataset/imported/kyverno-policies
+dest_tests: dataset/imported/kyverno-tests
+cache_dir: dataset/.cache/kyverno-policies-archive
+
+policies:
+
+  # --- ValidatingPolicy (cpol → vpol) ---
+  - id: cp_require_labels
+    upstream_path: best-practices/require-labels/require-labels.yaml
+    sync_test: true
+
+  - id: cp_require_resource_limits
+    upstream_path: best-practices/require-pod-requests-limits/require-pod-requests-limits.yaml
+    sync_test: true
+
+  - id: cp_restrict_image_registries
+    upstream_path: best-practices/restrict-image-registries/restrict-image-registries.yaml
+    sync_test: true
+
+  - id: cp_require_ro_rootfs
+    upstream_path: best-practices/require-ro-rootfs/require-ro-rootfs.yaml
+    sync_test: true
+
+  - id: cp_restrict_nodeport
+    upstream_path: best-practices/restrict-node-port/restrict-node-port.yaml
+    sync_test: true
+
+  - id: cp_disallow_default_namespace
+    upstream_path: best-practices/disallow-default-namespace/disallow-default-namespace.yaml
+    sync_test: true
+
+  - id: cp_disallow_latest_tag
+    upstream_path: best-practices/disallow-latest-tag/disallow-latest-tag.yaml
+    sync_test: true
+
+  - id: cp_require_drop_all
+    upstream_path: best-practices/require-drop-all/require-drop-all.yaml
+    sync_test: true
+
+  - id: cp_restrict_capabilities
+    upstream_path: psp-migration/restrict-adding-capabilities/restrict-adding-capabilities.yaml
+    sync_test: true
+
+  - id: cp_require_probes
+    upstream_path: best-practices/require-probes/require-probes.yaml
+    sync_test: true
+
+  - id: cp_disallow_cri_sock_mount
+    upstream_path: best-practices/disallow-cri-sock-mount/disallow-cri-sock-mount.yaml
+    sync_test: true
+
+  # --- MutatingPolicy ---
+  - id: cp_add_default_labels
+    upstream_path: other/add-labels/add-labels.yaml
+    sync_test: true
+
+  - id: cp_add_safe_to_evict
+    upstream_path: best-practices/add-safe-to-evict/add-safe-to-evict.yaml
+    sync_test: true
+
+  - id: cp_add_default_resources
+    upstream_path: other/add-default-resources/add-default-resources.yaml
+    sync_test: true
+
+  # --- GeneratingPolicy ---
+  - id: cp_add_networkpolicy_dns
+    upstream_path: best-practices/add-networkpolicy-dns/add-networkpolicy-dns.yaml
+    sync_test: false
+
+  - id: cp_add_ns_quota
+    upstream_path: best-practices/add-ns-quota/add-ns-quota.yaml
+    sync_test: true
+
+  # --- ImageValidatingPolicy ---
+  - id: cp_verify_image_simple
+    upstream_path: other/verify-image/verify-image.yaml
+    sync_test: false

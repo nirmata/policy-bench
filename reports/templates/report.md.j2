@@ -1,0 +1,44 @@
+# Policy Conversion Benchmark Report
+
+Generated: {{ agg.generated_at }}
+
+## Leaderboard
+
+| Rank | Tool       | Pass Rate | Avg Time | Avg Cost  | Diff Score | Composite |
+|------|------------|-----------|----------|-----------|------------|-----------|
+{% for e in leaderboard -%}
+| {{ e.rank }} | {{ e.tool }} | {{ "%.0f%%" | format(e.pass_rate * 100) }} | {{ "%.1fs" | format(e.avg_time) if e.avg_time else "-" }} | {{ "$%.4f" | format(e.avg_cost) if e.avg_cost else "-" }} | {{ "%.2f" | format(e.avg_diff_score) if e.avg_diff_score is not none else "-" }} | {{ "%.2f" | format(e.composite_score) }} |
+{% endfor %}
+
+## Per-Tool Summary
+
+{% for tool, stats in agg.tool_stats.items() -%}
+### {{ tool }}
+
+- **Passed**: {{ stats.passed }}/{{ stats.total }} ({{ "%.0f%%" | format(stats.pass_rate * 100) }})
+- **Avg time**: {{ "%.1fs" | format(stats.avg_time) if stats.avg_time else "N/A" }}
+- **Avg cost**: {{ "$%.4f" | format(stats.avg_cost) if stats.avg_cost else "N/A" }}
+- **Avg diff score**: {{ "%.2f" | format(stats.avg_diff_score) if stats.avg_diff_score is not none else "N/A" }}
+
+{% endfor %}
+
+## Per-Track Breakdown
+
+{% for track, stats in agg.track_stats.items() -%}
+- **{{ track }}**: {{ stats.passed }}/{{ stats.total }} passed, avg {{ "%.1fs" | format(stats.avg_time) if stats.avg_time else "N/A" }}
+{% endfor %}
+
+## Failures
+
+{% set failures = agg.results | selectattr("success", "false") | list -%}
+{% if failures -%}
+{% for f in failures -%}
+- `{{ f.tool }}` / `{{ f.policy_id }}`: {{ f.error or (f.schema_errors | join("; ")) }}
+{% endfor -%}
+{% else -%}
+No failures.
+{% endif %}
+
+## Raw Data
+
+See `results/` directory for full JSON results.

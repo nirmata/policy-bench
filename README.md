@@ -1,226 +1,524 @@
 # Policy Conversion Benchmark
 
-A **public benchmark** for converting old Kyverno policies to Kyverno 1.16+ (e.g. ValidatingPolicy). Use the same input and the same validation to compare **NPA (nctl)**, **Cursor Agent**, **Claude Code**, or any other AI/tool.
+A **public, reproducible benchmark** for converting and generating Kyverno policies. Compare **nctl (NPA)**, **Cursor Agent**, **Claude Code**, or any other AI/tool using the same inputs, prompts, and evaluation criteria.
 
-## Table of contents
+Two task types:
+- **Conversion** — transform an existing policy (ClusterPolicy, Gatekeeper, OPA, Sentinel, CleanupPolicy) into a Kyverno 1.16+ policy.
+- **Generation** — produce a brand-new Kyverno 1.16+ policy from a natural-language description (no source policy).
 
-- [Prerequisites](#prerequisites)
-- [Folder layout](#folder-layout)
-- [Step-by-step flow](#step-by-step-flow)
-  - [1. Clone the repo](#1-clone-the-repo)
-  - [2. Input: choose a policy to convert](#2-input-choose-a-policy-to-convert)
-  - [3. If you use your own policy, make sure it is valid first](#3-if-you-use-your-own-policy-make-sure-it-is-valid-first-optional-before-converting)
-  - [4. Conversion prompt](#4-conversion-prompt-use-this-exact-task-for-fair-comparison)
-  - [5. Run conversion with nctl (NPA)](#5-run-conversion-with-nctl-npa)
-  - [6. Run validation](#6-run-validation)
-  - [7. Kyverno CLI test (semantic validation)](#7-kyverno-cli-test-semantic-validation--runs-by-default)
-  - [8. Compare with another AI](#8-compare-with-another-ai-cursor-claude-etc)
-- [How we validate your policy (no cluster required)](#how-we-validate-your-policy-no-cluster-required)
-- [What the validator checks](#what-the-validator-checks)
-- [Results format](#results-format)
+> **Related repos**
+> - [Nirmata/go-nctl](https://github.com/nirmata/go-nctl) — nctl CLI and AI conversion skills
+> - [Nirmata/go-llms-apps](https://github.com/nirmata/go-llms-apps) — LLM application patterns for policy work
+
+---
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Pipeline Overview](#pipeline-overview)
+- [Supported Tracks and Output Types](#supported-tracks-and-output-types)
+- [Dataset](#dataset)
+- [Folder Layout](#folder-layout)
+- [Running the Benchmark](#running-the-benchmark)
+- [Evaluation](#evaluation)
+- [Results Schema](#results-schema)
+- [Report Generation](#report-generation)
+- [Blind Evaluation](#blind-evaluation)
+- [Stress Testing](#stress-testing)
+- [Iterative Improvement](#iterative-improvement)
+- [Legacy CLI (backward compatible)](#legacy-cli-backward-compatible)
+- [Transparency Statement](#transparency-statement)
+- [Contributing](#contributing)
 - [License](#license)
 
 ---
 
-## Prerequisites
+## Quick Start
 
-Install the following and ensure they are on your PATH (unless noted):
+```bash
+# 1. Clone and install dependencies
+git clone <this-repo-url>
+cd convert-policies
+pip install -r requirements.txt   # PyYAML + Jinja2
 
-| Tool | Purpose |
-|------|--------|
-| **Git** | Clone this repo |
-| **Python 3** (3.9+) | Run the validation script |
-| **PyYAML** | `pip install pyyaml` (required by the validator) |
-| **nctl** | Run conversions with NPA; run **nctl login** first (optional if you only compare other AIs) |
-| **kubectl** | Used by validator for schema dry-run (optional if no cluster) |
-| **kyverno CLI** | Used by default for semantic validation (step 7). Runs **locally**—no Kubernetes cluster or Kind needed. Use **--skip-kyverno-test** to skip. |
+# 2. Pull ClusterPolicy corpus from kyverno/policies (pinned revision; see manifest)
+python3 scripts/sync_kyverno_policies.py
+# (Requires network. Uses dataset/kyverno-upstream-manifest.yaml and writes dataset/imported/.)
 
-No other dependencies: the validator uses only the Python standard library and PyYAML (`pip install pyyaml` if needed).
+# 3. Run the benchmark (nctl only, all policies)
+python3 benchmark.py --tool nctl
+
+# 4. Run only generation tasks
+python3 benchmark.py --tool nctl --task-type generate
+
+# 5. Run only easy ValidatingPolicy conversions
+python3 benchmark.py --tool nctl --task-type convert --output-kind ValidatingPolicy --difficulty easy
+
+# 6. Generate reports
+python3 benchmark.py --report
+# or directly:
+python3 reports/generate.py
+```
+
+If you run `benchmark.py` before sync, ClusterPolicy paths under `dataset/imported/` are missing and the run fails with a pointer to `scripts/sync_kyverno_policies.py`.
+
+Reports are written to `reports/output/` (Markdown + HTML dashboard).
 
 ---
 
-## Folder layout
+## Pipeline Overview
+
+```
+dataset/  -->  benchmark.py  -->  runners/  -->  output/
+                                                   |
+                                             evaluators/
+                                                   |
+                                             results/ (JSON)
+                                                   |
+                                          reports/generate.py
+                                                   |
+                                        Markdown + HTML dashboard
+```
+
+1. **Dataset** — curated input policies organized by conversion track, plus generation task descriptions.
+2. **Runners** — benchmark harnesses that wrap each tool (nctl, Claude, Cursor). Each harness sends the prompt, captures output, measures wall-clock time, estimates tokens/cost, and returns a standard `RunResult`.
+3. **Evaluators** — schema validation, intent preservation, semantic tests (Kyverno CLI), diff scoring.
+4. **Results** — rich JSON per run (time, tokens, cost, diff_score, pass/fail).
+5. **Reports** — aggregated Markdown reports, HTML dashboard with charts, leaderboard.
+
+---
+
+## Supported Tracks and Output Types
+
+### Conversion Tracks
+
+| Track | Source Format | Target Kind(s) | Count |
+|-------|-------------|----------------|-------|
+| `cluster-policy` | Kyverno ClusterPolicy (v1) | ValidatingPolicy, MutatingPolicy, GeneratingPolicy, ImageValidatingPolicy | 18 |
+| `gatekeeper` | ConstraintTemplate + Constraint | ValidatingPolicy | 3 |
+| `opa` | OPA / Rego | ValidatingPolicy | 3 |
+| `sentinel` | HashiCorp Sentinel | ValidatingPolicy | 2 |
+| `cleanup` | Kyverno CleanupPolicy | DeletingPolicy | 2 |
+
+### Generation Tasks
+
+| Output Kind | Count | Description |
+|-------------|-------|-------------|
+| ValidatingPolicy | 7 | Generate validation policies from NL prompts |
+| MutatingPolicy | 2 | Generate mutation policies from NL prompts |
+| GeneratingPolicy | 1 | Generate resource-generating policies from NL prompts |
+
+### Totals
+
+| Dimension | Breakdown |
+|-----------|-----------|
+| **By task type** | 28 conversion + 10 generation + 3 stress = **41 total** |
+| **By difficulty** | 13 easy + 14 medium + 8 hard + 3 stress |
+| **By output kind** | 22 ValidatingPolicy + 5 MutatingPolicy + 3 GeneratingPolicy + 1 ImageValidatingPolicy + 2 DeletingPolicy |
+
+---
+
+## Dataset
+
+`dataset/index.yaml` lists every benchmark task. Sources are split:
+
+| Source | Location | How it gets here |
+|--------|----------|------------------|
+| **Kyverno ClusterPolicy** | `dataset/imported/kyverno-policies/` + optional `dataset/imported/kyverno-tests/` | **`python3 scripts/sync_kyverno_policies.py`** copies from [kyverno/policies](https://github.com/kyverno/policies) at the pinned `ref` in `dataset/kyverno-upstream-manifest.yaml`. |
+| **Local ClusterPolicy** | `dataset/local/cluster-policy/` | Maintained here (e.g. one complex multi-rule sample). |
+| **Gatekeeper, OPA, Sentinel, Cleanup, stress** | `dataset/gatekeeper/`, `dataset/opa/`, etc. | Maintained in this repo. |
+| **Generation tasks** | (no input file) | Prompt text in `index.yaml` `description`. |
+
+Example index entries:
+
+```yaml
+policies:
+  # Synced conversion task (run sync script first)
+  - id: cp_require_resource_limits
+    track: cluster-policy
+    task_type: convert
+    path: imported/kyverno-policies/cp_require_resource_limits.yaml
+    difficulty: easy
+    description: "Require CPU and memory requests/limits on Pods (upstream: require-pod-requests-limits)"
+    expected_output_kind: ValidatingPolicy
+    kyverno_test_dir: imported/kyverno-tests/cp_require_resource_limits
+
+  # Generation task (no path — prompt only)
+  - id: gen_require_labels
+    track: cluster-policy
+    task_type: generate
+    difficulty: easy
+    description: "requires all Pods to have the label 'app.kubernetes.io/name' ..."
+    expected_output_kind: ValidatingPolicy
+```
+
+**Refreshing upstream:** edit `ref` in `dataset/kyverno-upstream-manifest.yaml`, run the sync script again, and re-run the benchmark. `dataset/imported/upstream-meta.json` records the last sync.
+
+**Offline / CI:** either run the sync step in the pipeline (needs network) or vendor/commit the contents of `dataset/imported/` and adjust `.gitignore` if you want them tracked.
+
+Each entry has:
+- **id** — unique identifier used in results and output filenames.
+- **track** — conversion track (determines prompt template, input validator, intent checker).
+- **task_type** — `convert` (has `path` to source policy) or `generate` (prompt-only, no source).
+- **difficulty** — `easy`, `medium`, `hard`, or `stress`.
+- **expected_output_kind** — target Kyverno 1.16+ kind (ValidatingPolicy, MutatingPolicy, etc.).
+- **description** — for conversion tasks, describes the policy; for generation tasks, this is the NL requirement used in the prompt.
+- **kyverno_test_dir** — optional; Kyverno CLI policy tests (often copied from upstream `.kyverno-test`).
+- **expect_failure** — if `true`, the policy is intentionally invalid (stress testing).
+
+---
+
+## Folder Layout
 
 ```
 convert-policies/
-├── README.md             # This file
-├── validate.py           # Validation script (input + output schema + intent)
-├── validate-legacy.py    # Legacy policy validation (used by validate.py; can also run standalone)
-├── input/                # Policies to convert (add yours or use the sample)
-├── output/               # Put the converted policy here (from nctl or any AI)
-├── results/              # Validation results (JSON); policy copies in results/policy-output-manifest-files/
-├── sample-policies/      # Example legacy policies (ClusterPolicy YAMLs)
-├── test-resources/       # Test resources (e.g. Pods) for running policies
-├── kyverno-tests/        # Kyverno CLI test (cli.kyverno.io Test + resources); runs by default unless --skip-kyverno-test
-└── run-nctl-conversion.sh # Run nctl AI conversion (version + flow checks; saves policy copy to results/policy-output-manifest-files/)
+  benchmark.py                 # Main orchestrator (supports convert + generate)
+  config.yaml                  # Tool + track + evaluation settings
+  validate.py                  # CLI wrapper (--input optional for generation)
+  validate-legacy.py           # Legacy ClusterPolicy validator (standalone)
+  run-nctl-conversion.sh       # Legacy nctl helper script
+  requirements.txt             # Python dependencies
+  scripts/
+    sync_kyverno_policies.py   # Fetch kyverno/policies → dataset/imported/
+  dataset/
+    index.yaml                 # Policy manifest (41 entries: convert + generate + stress)
+    kyverno-upstream-manifest.yaml  # Curated paths + pinned ref for sync script
+    imported/                  # Generated by sync (policies + tests); see imported/README.md
+    local/cluster-policy/      # Small in-repo ClusterPolicy samples (not from upstream)
+    gatekeeper/                # ConstraintTemplate + Constraint samples
+    opa/                       # Rego policy files
+    sentinel/                  # Sentinel policy files
+    cleanup/                   # CleanupPolicy samples
+    stress/                    # Malformed / edge-case inputs
+  runners/                     # Benchmark harnesses (one per tool)
+    base.py                    # RunResult, ToolRunner ABC, token/cost estimation
+    nctl_runner.py             # nctl ai CLI harness
+    claude_runner.py           # claude CLI (primary) + Anthropic API (fallback)
+    cursor_runner.py           # cursor CLI --force (primary) + manual (fallback)
+    prompts.py                 # Prompt templates (conversion per track+kind, generation)
+  evaluators/
+    evaluate.py                # Main entry point (supports output-only for generation)
+    schema_validator.py        # Output schema checks (all 5 Kyverno 1.16+ kinds)
+    intent_validator.py        # Per-track intent: vpol, mpol, gpol, ivpol, dpol
+    semantic_validator.py      # Kyverno CLI test runner
+    diff_scorer.py             # Structural similarity scoring (0.0-1.0)
+    input_validators/          # Per-track input validation
+      cluster_policy.py
+      gatekeeper.py
+      opa.py
+      sentinel.py
+      cleanup.py
+  results/                     # Per-run JSON results (gitignored)
+    examples/                  # Golden sample results (committed)
+  reports/
+    generate.py                # Markdown + HTML report generator
+    templates/                 # Jinja2 templates
+    output/                    # Generated reports
+  blind-eval/
+    anonymize.py               # Strip tool identity for blind judging
+    judge_form.html            # Local scoring form
+    reveal.py                  # Merge human scores with tool mapping
+  kyverno-tests/               # Kyverno CLI semantic test suites
+  input/                       # Legacy input dir (kept for compat)
+  output/                      # Conversion outputs, organized by tool
 ```
 
 ---
 
-## Step-by-step flow
+## Running the Benchmark
 
-### 1. Clone the repo
+### Prerequisites
+
+| Tool | Purpose | Required? |
+|------|---------|-----------|
+| Python 3.9+ | Run benchmark | Yes |
+| PyYAML | YAML parsing | Yes (`pip install pyyaml`) |
+| Jinja2 | Report templates | Recommended (`pip install jinja2`) |
+| `nctl` CLI | NPA conversion (subject) | If benchmarking nctl |
+| `claude` CLI | Claude Code conversion (subject) | If benchmarking Claude |
+| `cursor` CLI | Cursor Agent conversion (subject) | If benchmarking Cursor |
+| `ANTHROPIC_API_KEY` | Fallback for Claude (API mode) | If no `claude` CLI |
+| Kyverno CLI | Semantic validation | Optional (runs locally, no cluster needed) |
+| kubectl | Schema dry-run | Optional |
+
+### Runner architecture
+
+Each tool being benchmarked has a **runner harness** in `runners/`. The harness is not the tool — it wraps the tool as the subject of the benchmark and produces standardized metrics:
+
+```
+  harness sends prompt  -->  tool runs  -->  harness captures output
+       |                                          |
+       +--- measures wall-clock time              +--- extracts YAML
+       +--- estimates/reads token counts          +--- checks file written
+       +--- computes cost                         +--- returns RunResult
+```
+
+| Runner | CLI command | Token source | Cost source |
+|--------|------------|-------------|-------------|
+| **nctl** | `nctl ai --prompt "..." --skip-permission-checks` | Estimated (~3.8 chars/token) | Estimated (Claude Sonnet rates) |
+| **claude** | `claude -p "..." --output-format json --allowedTools Read,Write,Shell` | Real (from JSON output) | Real (model pricing table) |
+| **cursor** | `cursor -p "..." --force --output-format json` | Real if exposed, else estimated | Estimated (Claude Sonnet rates) |
+
+When the CLI is not installed, Claude falls back to the Anthropic Messages API; Cursor falls back to a manual mode (prints prompt, polls for the output file). Token estimates are flagged with `"tokens_estimated": true` in the results JSON so reports can distinguish real from estimated counts.
+
+### Full benchmark (all tools, all policies)
 
 ```bash
-git clone <this-repo-url>
-cd convert-policies
+python3 benchmark.py
 ```
 
-### 2. Input: choose a policy to convert
-
-- **Benchmark:** Use the provided sample policy in `input/require-resource-limits.yaml`.
-- **Your own:** Add your own policy YAML into `input/` (e.g. `input/my-policy.yaml`). It should be an old Kyverno `ClusterPolicy` (`apiVersion: kyverno.io/v1`) or a Gatekeeper ConstraintTemplate + Constraint. *(Input validation in step 3 and the validator currently support ClusterPolicy; Gatekeeper support may be added later.)*
-
-### 3. If you use your own policy, make sure it is valid first (optional, before converting)
-
-If you use your own policy (not the benchmark sample), validate it before converting. Invalid input makes conversion and comparison results unreliable. You can skip this step when using `input/require-resource-limits.yaml`; for any other input, run:
+### Filter by tool, track, difficulty, task type, or output kind
 
 ```bash
-python3 validate.py --input input/your-policy.yaml
+# All policies with nctl
+python3 benchmark.py --tool nctl
+
+# Only conversion tasks
+python3 benchmark.py --tool nctl --task-type convert
+
+# Only generation tasks with Claude
+python3 benchmark.py --tool claude --task-type generate
+
+# Only easy ValidatingPolicy tasks
+python3 benchmark.py --tool nctl --output-kind ValidatingPolicy --difficulty easy
+
+# Only MutatingPolicy conversions
+python3 benchmark.py --tool claude --output-kind MutatingPolicy --task-type convert
+
+# Single policy by ID
+python3 benchmark.py --policy-id gk_required_labels --tool nctl
+
+# Stress tests only
+python3 benchmark.py --difficulty stress --tool nctl
 ```
 
-You should see **PASS** (`Input policy: PASS` from `validate.py`, or `Validation: PASS` from `validate-legacy.py`). Do not proceed to conversion if you see **FAIL**.
-
-
-### 4. Conversion prompt (use this exact task for fair comparison)
-
-Use one of the prompts below with **nctl** or **any other AI** so results are comparable.
-
-**1. When you use our sample policy YAML file** (benchmark):
-
-```
-Convert the policy in input/require-resource-limits.yaml to a Kyverno ValidatingPolicy (Kyverno 1.16+) using CEL-based validation where appropriate. Write the converted policy to output/converted.yaml.
-```
-
-**2. When you use your own custom policy file** (e.g. `input/my-policy.yaml`):
-
-```
-Convert the policy in input/my-policy.yaml to a Kyverno ValidatingPolicy (Kyverno 1.16+) using CEL-based validation where appropriate. Write the converted policy to output/converted.yaml.
-```
-
-Replace `input/my-policy.yaml` with your actual input path. The **output** should always be `output/converted.yaml` (or use the same path every time so the validator can find it).
-
-### 5. Run conversion with nctl (NPA)
-
-Use this step when you want to **test** the nctl AI conversion feature. It converts your policy using nctl’s AI mechanism.
-
-Use the helper script to run the conversion and see **conversion step results** (whether the conversion skill was loaded and the agent completed):
+### Skip semantic tests or kubectl
 
 ```bash
-./run-nctl-conversion.sh
-# Or with your own input file:
-./run-nctl-conversion.sh input/my-policy.yaml
+python3 benchmark.py --skip-kyverno-test --no-kubectl
 ```
-
-The script prints **nctl version**, runs **nctl ai**, then reports three checks: (1) converting-policies skill loaded, (2) generating-policies skill loaded, (3) agent completed successfully. Conversion logs are **not** saved to disk. A copy of the converted policy is saved to **`results/policy-output-manifest-files/<policy-name>_<timestamp>.yaml`** (e.g. `require-resource-limits_20260317_134657.yaml`) for that run. The script uses **`--skip-permission-checks`** so nctl does not prompt for confirmation and the conversion runs non-interactively (e.g. in CI or when there is no TTY).
-
-To run the conversion without the script, add **`--skip-permission-checks`** for non-interactive runs:
-
-```bash
-nctl ai --allowed-dirs "$(pwd)" --prompt "Convert the policy in input/require-resource-limits.yaml to a Kyverno ValidatingPolicy (Kyverno 1.16+) using CEL-based validation where appropriate. Write the converted policy to output/converted.yaml." --skip-permission-checks
-```
-
-If you are converting your own policy (from step 2), replace `input/require-resource-limits.yaml` in the prompt with your input path (e.g. `input/my-policy.yaml`). Ensure the converted policy is saved to `output/converted.yaml` (nctl or you may need to copy it there).
-
-**Using another AI (e.g. ChatGPT, Cursor, or another agent)?** Skip this step. Use one of the prompts from step 4 in your AI, save the converted policy to `output/converted.yaml`, then run step 6 to validate the output.
-
-### 6. Run validation
-
-Run this after conversion (whether you used nctl in step 5 or another AI in step 4). Use the **same** `--input` path as the policy you converted, and the path where you saved the converted policy as `--output`:
-
-```bash
-python3 validate.py --input input/require-resource-limits.yaml --output output/converted.yaml --tool nctl
-```
-
-If you converted your own policy, set `--input` to that file (e.g. `--input input/my-policy.yaml`). If you saved the conversion elsewhere (e.g. `output/cursor/converted.yaml`), set `--output` to that path.
-
-- **`--input`** — Path to the **original** policy (for intent comparison). It is validated first; if invalid, the script exits before checking the output.
-- **`--output`** — Path to the **converted** policy (the file to validate).
-- **`--tool`** — Label for this run (e.g. `nctl`, `cursor`, `claude`). Used in the results JSON filename.
-
-Results are written to `results/run_<timestamp>_<tool>.json`. The validator prints a short summary (Schema, Intent, Semantic) with pass/fail for each; on semantic failure it shows the full Kyverno test output (table and reason). **Semantic validation** (Kyverno CLI test) runs by default when `kyverno-tests/` exists and `kyverno` is on PATH; use **--skip-kyverno-test** to skip it (see step 7).
-
-### 7. Kyverno CLI test (semantic validation) — runs by default
-
-**No cluster needed.** When you run step 6, the validator also runs the **Kyverno CLI test** by default (if the `kyverno` CLI is on your PATH and the `kyverno-tests/` directory exists). The CLI runs **locally** against YAML files; you do **not** need a Kind cluster or Kyverno installed in a cluster. Install the [Kyverno CLI](https://kyverno.io/docs/kyverno-cli/) and ensure it is on your PATH.
-
-To **skip** semantic validation (e.g. if you don't have the Kyverno CLI or use a custom test dir elsewhere), pass **--skip-kyverno-test**:
-
-```bash
-python3 validate.py --input input/require-resource-limits.yaml --output output/converted.yaml --tool nctl --skip-kyverno-test
-```
-
-You can also run the test manually:
-
-```bash
-kyverno test kyverno-tests/
-```
-
-The repo includes a minimal `kyverno-tests/` for the sample policy: it expects the converted policy in `output/converted.yaml`. When you run **validate.py**, it **automatically** patches the test so `results.policy` matches the converted policy's **metadata.name**—so it works whether nctl (or another converter) produces `require-pod-resource-limits`, `require-cpu-memory-limits`, or any other name. You do **not** need to edit `kyverno-test.yaml` when the converter uses a different policy name. The test checks that the converted policy **passes** on compliant resources and **fails** on non-compliant ones. To use a different test directory, pass **--kyverno-test-dir &lt;dir&gt;** (default is `kyverno-tests`).
-
-**Note:** As of Kyverno CLI 1.17, the `kyverno test` command does not yet support the ValidatingPolicy 1.16+ schema (e.g. `spec.admission`, `spec.assertions`). If you see **Semantic: SKIP** with that message, the validator is treating it as a known limitation—schema and intent still validate your conversion. Use **--skip-kyverno-test** to skip the step explicitly.
-
-### 8. Compare with another AI (Cursor, Claude, etc.)
-
-**Fair comparison.** When you benchmark an AI other than nctl (e.g. ChatGPT, Cursor, Claude, or another agent), the conversion must be done **only** by that AI. If Nirmata MCP servers or Nirmata skills are enabled in your environment (e.g. in Cursor or another IDE), they can take part in the conversion and the result will no longer reflect that agent alone. Before running the other AI, disable or remove any Nirmata MCP servers and Nirmata-related skills so the benchmark measures only the agent you are testing.
-
-1. Use the **same** input file and the **same** prompt (see step 4).
-2. Run the other AI (Cursor Agent, Claude Code, etc.) and get the converted policy.
-3. Save that converted policy to `output/converted.yaml` (overwrite), or to a path like `output/cursor/converted.yaml` if you keep multiple runs.
-4. Run the same validation command. Use `--input` for the original policy you converted and `--output` for where you saved the converted file; set `--tool` to a label for this AI (e.g. `cursor`):
-
-   ```bash
-   python3 validate.py --input input/require-resource-limits.yaml --output output/converted.yaml --tool cursor
-   ```
-
-   If you saved to a subfolder (e.g. `output/cursor/converted.yaml`), use that path for `--output`.
-
-5. Open the JSON in `results/` to compare: `schema_pass`, `intent_pass`, and any error messages.
 
 ---
 
-## How we validate your policy (no cluster required)
+## Evaluation
 
-User policies are validated by **Python scripts only** (PyYAML + structure checks). You do **not** need a Kubernetes cluster or a Kyverno installation.
+Each policy is evaluated based on its task type:
 
-- **What runs:** `validate-legacy.py` or `validate.py --input <path>` checks that the file is valid YAML, has `kind: ClusterPolicy`, `apiVersion: kyverno.io/...`, and that each rule has `match` and a valid `validate` block (pattern/anyPattern/deny + message).
-- **Optional:** If `kubectl` is on your PATH, the script may run `kubectl apply -f <policy> --dry-run=client`. That only succeeds when a cluster with Kyverno CRDs is available; if not (e.g. no cluster or CRDs not installed), the script ignores that failure and still reports PASS from the structure checks.
-- **Kyverno CLI:** Semantic validation runs **by default** when you run `validate.py` with `--output`: the script runs `kyverno test kyverno-tests/` (or the dir given by `--kyverno-test-dir`). The CLI runs **locally** (no cluster needed). If the Kyverno CLI is not on PATH or the test dir is missing, semantic validation is skipped. Use **--skip-kyverno-test** to skip it explicitly.
+### Conversion tasks (4 dimensions)
+
+1. **Schema** — valid YAML, correct `kind` (e.g. `ValidatingPolicy`, `MutatingPolicy`), correct `apiVersion` (`policies.kyverno.io/`). Optional `kubectl --dry-run=client`.
+2. **Intent** — preserves the source policy's target resource kinds and enforcement action. Per-track + per-output-kind logic (handles validate, mutate, generate, imageVerify rules).
+3. **Semantic** — Kyverno CLI `test` against sample resources (pass on compliant, fail on non-compliant). Runs locally, no cluster needed.
+4. **Diff Score** — 0.0–1.0 structural similarity (target kinds overlap, rule count ratio, message overlap).
+
+### Generation tasks (2 dimensions)
+
+1. **Schema** — same as conversion.
+2. **Semantic** — same as conversion (if kyverno-test exists).
+
+Intent validation and diff scoring are **skipped** for generation tasks since there is no source policy to compare against.
 
 ---
 
-## What the validator checks
+## Results Schema
 
-- **Input policy (before conversion):** When you run `validate.py` with both `--input` and `--output`, the input file is validated first (legacy ClusterPolicy structure: YAML, kind, apiVersion, spec.rules, match, validate). If the input is invalid, the script exits with an error so you fix the policy before comparing conversion output. You can also validate input only with `python3 validate.py --input input/your-policy.yaml` (no `--output`).
-- **Schema (output):** The converted file is valid YAML, has `kind: ValidatingPolicy` (or another Kyverno 1.16+ policy kind), and `apiVersion` starting with `policies.kyverno.io/`. Optionally runs `kubectl apply --dry-run=client` if kubectl is available.
-- **Intent:** For ClusterPolicy → ValidatingPolicy: same target kinds (e.g. Pods) and same validation action (Enforce → Deny, Audit → Audit).
-- **Semantic (default on):** Unless you pass **--skip-kyverno-test**, the script runs `kyverno test <dir>` (default dir: `kyverno-tests/`) when the Kyverno CLI is on PATH to check that the converted policy passes/fails on the test resources as expected. No cluster required.
-
----
-
-## Results format
-
-Each run produces a JSON file in `results/`, e.g. `results/run_20250115_143022_nctl.json`:
+Each run produces a JSON file in `results/`:
 
 ```json
 {
-  "input_path": "input/require-resource-limits.yaml",
-  "output_path": "output/converted.yaml",
+  "run_id": "run_20260319_143022_nctl_cp_require_resource_limits",
   "tool": "nctl",
-  "timestamp": "2025-01-15T14:30:22",
+  "policy_id": "cp_require_resource_limits",
+  "track": "cluster-policy",
+  "task_type": "convert",
+  "difficulty": "easy",
+  "expected_output_kind": "ValidatingPolicy",
+  "timestamp": "2026-03-19T14:30:22Z",
+  "success": true,
+  "conversion_time_seconds": 2.3,
+  "input_tokens": 850,
+  "output_tokens": 1200,
+  "total_tokens": 2050,
+  "cost_usd": 0.002,
+  "tokens_estimated": true,
+  "model": "nctl-builtin",
   "schema_pass": true,
   "intent_pass": true,
+  "semantic_pass": true,
+  "semantic_skipped": false,
+  "diff_score": 0.92,
   "schema_errors": [],
   "intent_errors": [],
-  "semantic_pass": true,
-  "semantic_errors": [],
-  "semantic_skipped": false
+  "semantic_errors": []
 }
 ```
 
-When Kyverno test is skipped (**--skip-kyverno-test**, or `kyverno` not on PATH, or test dir missing), `semantic_skipped` is `true` and `semantic_pass`/`semantic_errors` may be omitted.
+For **generation** tasks, `intent_pass` is `null` and `diff_score` is `null`.
 
-Use these files to compare accuracy across tools (and add timing/cost later if you collect them).
+### Console output
+
+```
+  Tool       Policy                              Type      Kind                 Diff Schema  Intent  Semantic  Time(s)
+  ----------------------------------------------------------------------------------------------------
+  nctl       cp_require_labels                   convert   ValidatingPolicy     0.95    PASS    PASS      SKIP      8.2
+  nctl       cp_add_default_labels               convert   MutatingPolicy       0.88    PASS    PASS      SKIP     12.1
+  nctl       gen_require_labels                  generate  ValidatingPolicy        -    PASS       —      SKIP      6.1
+  nctl       gen_create_networkpolicy            generate  GeneratingPolicy        -    PASS       —      SKIP     11.3
+
+  Summary: Schema: 38/41 | Intent: 24/28 (convert only) | Semantic: 0/0 | Avg: 10.2s
+```
+
+---
+
+## Report Generation
+
+```bash
+# Generate both Markdown and HTML
+python3 reports/generate.py
+
+# Or via the main orchestrator
+python3 benchmark.py --report
+
+# Markdown only
+python3 reports/generate.py --format markdown
+
+# HTML dashboard only
+python3 reports/generate.py --format html
+```
+
+**Markdown report** includes: leaderboard, per-tool summary, per-track breakdown, per-task-type breakdown, per-difficulty breakdown, per-output-kind breakdown, failure analysis.
+
+**HTML dashboard** includes: interactive charts (Chart.js), filterable results table, leaderboard with composite scores.
+
+### Leaderboard scoring
+
+Tools are ranked by a composite score (configurable weights in `config.yaml`):
+
+```
+composite = 0.5 * pass_rate + 0.2 * (1 - normalized_time) + 0.2 * diff_score + 0.1 * (1 - normalized_cost)
+```
+
+---
+
+## Blind Evaluation
+
+To remove bias when comparing tools:
+
+```bash
+# 1. Anonymize outputs (strips tool identity, assigns random IDs)
+python3 blind-eval/anonymize.py
+
+# 2. Open the judge form in a browser
+open blind-eval/judge_form.html
+# Load files from blind-eval/anonymized/, score each on 1-5 scale, export scores.json
+
+# 3. Reveal identities and merge scores
+python3 blind-eval/reveal.py --scores blind-eval/scores.json
+```
+
+---
+
+## Stress Testing
+
+The `dataset/stress/` directory contains intentionally broken or edge-case policies:
+
+- `malformed-yaml.yaml` — broken YAML syntax
+- `missing-spec.yaml` — valid YAML, no `spec`
+- `empty-rules.yaml` — spec with empty rules list
+
+Run stress tests to see how tools handle bad input:
+
+```bash
+python3 benchmark.py --difficulty stress --tool nctl
+```
+
+Stress policies have `expect_failure: true` in the index; the benchmark evaluates whether the tool fails gracefully or hallucinates output.
+
+---
+
+## Iterative Improvement
+
+Allow tools multiple attempts to fix their own errors:
+
+```bash
+python3 benchmark.py --tool claude --max-attempts 3
+```
+
+On failure, the benchmark re-runs with an augmented prompt that includes the previous errors. Each attempt is recorded separately (`"attempt": 1`, `"attempt": 2`, ...) so reports can show the improvement curve.
+
+---
+
+## Legacy CLI (backward compatible)
+
+The `validate.py` CLI supports both conversion and generation validation:
+
+```bash
+# Validate input only
+python3 validate.py --input input/require-resource-limits.yaml
+
+# Validate conversion (input + output)
+python3 validate.py --input input/require-resource-limits.yaml \
+  --output output/converted.yaml --tool nctl
+
+# Validate generated policy (output only — no source to compare)
+python3 validate.py --output output/generated-vpol.yaml --tool claude
+
+# With expected kind check
+python3 validate.py --output output/mutating.yaml --tool nctl --expected-kind MutatingPolicy
+```
+
+The legacy `run-nctl-conversion.sh` script also still works.
+
+---
+
+## Transparency Statement
+
+This benchmark is designed to be **credible and fair**:
+
+- **Open dataset** — ClusterPolicy fixtures are pinned copies of [kyverno/policies](https://github.com/kyverno/policies) (see manifest + sync script); other tracks and generation tasks are defined in this repo.
+- **Reproducible** — same prompts, same evaluation, same scoring for every tool.
+- **Failures shown** — results include failures, errors, and partial outputs. We don't hide bad runs.
+- **Raw data published** — every run produces a JSON file with full details. Nothing is aggregated away.
+- **Blind evaluation** — human judging with anonymized outputs removes tool-name bias.
+- **No special treatment** — nctl uses the same prompts and evaluation as Cursor and Claude. If Nirmata MCP servers or skills are active in your IDE, disable them when benchmarking other tools (see the blind-eval workflow).
+
+If you find issues with the evaluation methodology, open an issue.
+
+---
+
+## Contributing
+
+### Add a new ClusterPolicy from kyverno/policies
+
+1. Add a block to `dataset/kyverno-upstream-manifest.yaml` with `id`, `upstream_path` (under [kyverno/policies](https://github.com/kyverno/policies)), and `sync_test: true|false`.
+2. Add a matching entry to `dataset/index.yaml` with `path: imported/kyverno-policies/<id>.yaml` and, if tests were synced, `kyverno_test_dir: imported/kyverno-tests/<id>`.
+3. Run `python3 scripts/sync_kyverno_policies.py` and verify the files appear under `dataset/imported/`.
+
+### Add a new policy maintained in this repo
+
+1. Add the policy file under `dataset/local/` or the appropriate `dataset/<track>/` directory (Gatekeeper, OPA, Sentinel, cleanup, stress).
+2. Add an entry to `dataset/index.yaml` with a unique `id`, `path` relative to `dataset/`, `track`, `task_type`, `difficulty`, `expected_output_kind`, and `description`.
+3. (Optional) Add a Kyverno CLI test directory and set `kyverno_test_dir` (relative to `dataset/`).
+
+### Add a generation task
+
+1. Add an entry to `dataset/index.yaml` with `task_type: generate` and no `path`.
+2. Write the `description` as the natural-language requirement (it becomes the prompt body).
+3. (Optional) Add a Kyverno CLI test suite to validate the generated policy.
+
+### Add a new tool
+
+1. Create `runners/<tool>_runner.py` implementing the `ToolRunner` interface from `runners/base.py`.
+2. Add the tool to `config.yaml` under `tools:`.
+3. Run `python3 benchmark.py --tool <tool>` to test.
+
+### Add a new conversion track
+
+1. Create an input validator in `evaluators/input_validators/<track>.py`.
+2. Add intent validation logic to `evaluators/intent_validator.py`.
+3. Add a prompt template to `runners/prompts.py`.
+4. Add the track to `config.yaml` under `tracks:`.
+5. Add sample policies to `dataset/<track>/` and update `dataset/index.yaml`.
 
 ---
 

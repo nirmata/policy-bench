@@ -1,0 +1,21 @@
+apiVersion: kyverno.io/v2beta1
+kind: CleanupPolicy
+metadata:
+  name: cleanup-failed-pods
+  namespace: default
+  annotations:
+    policies.kyverno.io/title: Cleanup Failed Pods
+    policies.kyverno.io/description: >-
+      Remove Pods in Failed phase to free resources and reduce noise.
+spec:
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+  conditions:
+    all:
+      - key: "{{ target.status.phase }}"
+        operator: Equals
+        value: Failed
+  schedule: "0 */6 * * *"

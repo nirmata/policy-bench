@@ -1,0 +1,14 @@
+# Sentinel policy: enforce resource limits on all containers.
+# Every container must have CPU and memory limits set.
+
+import "tfplan/v2" as tfplan
+
+main = rule {
+    all tfplan.resource_changes as _, rc {
+        rc.type is "kubernetes_pod" and
+        all rc.change.after.spec[0].container as container {
+            container.resources[0].limits[0].cpu is not empty and
+            container.resources[0].limits[0].memory is not empty
+        }
+    }
+}

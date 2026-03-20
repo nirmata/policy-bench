@@ -1,0 +1,390 @@
+policies:
+
+  # ClusterPolicy sources: vendored from github.com/kyverno/policies (pinned manifest).
+  # Run:  python3 scripts/sync_kyverno_policies.py
+  # See: dataset/imported/README.md
+
+  # ========================================================================
+  # CONVERSION TASKS — ClusterPolicy → ValidatingPolicy (cpol→vpol)
+  # ========================================================================
+
+  - id: cp_require_labels
+    track: cluster-policy
+    task_type: convert
+    path: imported/kyverno-policies/cp_require_labels.yaml
+    difficulty: easy
+    description: "Require app.kubernetes.io/name label on all Pods (from kyverno/policies)"
+    expected_output_kind: ValidatingPolicy
+    kyverno_test_dir: imported/kyverno-tests/cp_require_labels
+
+  - id: cp_require_resource_limits
+    track: cluster-policy
+    task_type: convert
+    path: imported/kyverno-policies/cp_require_resource_limits.yaml
+    difficulty: easy
+    description: "Require CPU and memory requests/limits on Pods (upstream: require-pod-requests-limits)"
+    expected_output_kind: ValidatingPolicy
+    kyverno_test_dir: imported/kyverno-tests/cp_require_resource_limits
+
+  - id: cp_restrict_image_registries
+    track: cluster-policy
+    task_type: convert
+    path: imported/kyverno-policies/cp_restrict_image_registries.yaml
+    difficulty: easy
+    description: "Only allow images from approved container registries"
+    expected_output_kind: ValidatingPolicy
+    kyverno_test_dir: imported/kyverno-tests/cp_restrict_image_registries
+
+  - id: cp_require_ro_rootfs
+    track: cluster-policy
+    task_type: convert
+    path: imported/kyverno-policies/cp_require_ro_rootfs.yaml
+    difficulty: easy
+    description: "Require readOnlyRootFilesystem on all containers"
+    expected_output_kind: ValidatingPolicy
+    kyverno_test_dir: imported/kyverno-tests/cp_require_ro_rootfs
+
+  - id: cp_restrict_nodeport
+    track: cluster-policy
+    task_type: convert
+    path: imported/kyverno-policies/cp_restrict_nodeport.yaml
+    difficulty: easy
+    description: "Deny NodePort services (upstream: restrict-node-port)"
+    expected_output_kind: ValidatingPolicy
+    kyverno_test_dir: imported/kyverno-tests/cp_restrict_nodeport
+
+  - id: cp_disallow_default_namespace
+    track: cluster-policy
+    task_type: convert
+    path: imported/kyverno-policies/cp_disallow_default_namespace.yaml
+    difficulty: medium
+    description: "Deny workloads in the default namespace"
+    expected_output_kind: ValidatingPolicy
+    kyverno_test_dir: imported/kyverno-tests/cp_disallow_default_namespace
+
+  - id: cp_disallow_latest_tag
+    track: cluster-policy
+    task_type: convert
+    path: imported/kyverno-policies/cp_disallow_latest_tag.yaml
+    difficulty: medium
+    description: "Disallow ':latest' and untagged container images (foreach)"
+    expected_output_kind: ValidatingPolicy
+    kyverno_test_dir: imported/kyverno-tests/cp_disallow_latest_tag
+
+  - id: cp_require_drop_all
+    track: cluster-policy
+    task_type: convert
+    path: imported/kyverno-policies/cp_require_drop_all.yaml
+    difficulty: medium
+    description: "Require containers to drop ALL capabilities"
+    expected_output_kind: ValidatingPolicy
+    kyverno_test_dir: imported/kyverno-tests/cp_require_drop_all
+
+  - id: cp_restrict_capabilities
+    track: cluster-policy
+    task_type: convert
+    path: imported/kyverno-policies/cp_restrict_capabilities.yaml
+    difficulty: medium
+    description: "Restrict adding capabilities beyond NET_BIND_SERVICE"
+    expected_output_kind: ValidatingPolicy
+    kyverno_test_dir: imported/kyverno-tests/cp_restrict_capabilities
+
+  - id: cp_require_probes
+    track: cluster-policy
+    task_type: convert
+    path: imported/kyverno-policies/cp_require_probes.yaml
+    difficulty: medium
+    description: "Require liveness and readiness probes on Deployments"
+    expected_output_kind: ValidatingPolicy
+    kyverno_test_dir: imported/kyverno-tests/cp_require_probes
+
+  - id: cp_disallow_cri_sock_mount
+    track: cluster-policy
+    task_type: convert
+    path: imported/kyverno-policies/cp_disallow_cri_sock_mount.yaml
+    difficulty: hard
+    description: "4 rules checking different CRI socket paths (Docker, containerd, CRI-O, cri-dockerd)"
+    expected_output_kind: ValidatingPolicy
+    kyverno_test_dir: imported/kyverno-tests/cp_disallow_cri_sock_mount
+
+  # Custom multi-rule policy (not from kyverno/policies)
+  - id: cp_complex_pod_deployment
+    track: cluster-policy
+    task_type: convert
+    path: local/cluster-policy/complex-pod-deployment.yaml
+    difficulty: hard
+    description: "Multi-rule policy: resource limits, security context, labels, deny hostNetwork"
+    expected_output_kind: ValidatingPolicy
+
+  # ========================================================================
+  # CONVERSION TASKS — ClusterPolicy → MutatingPolicy (cpol→mpol)
+  # ========================================================================
+
+  - id: cp_add_default_labels
+    track: cluster-policy
+    task_type: convert
+    path: imported/kyverno-policies/cp_add_default_labels.yaml
+    difficulty: easy
+    description: "Add labels via mutate (upstream: add-labels)"
+    expected_output_kind: MutatingPolicy
+    kyverno_test_dir: imported/kyverno-tests/cp_add_default_labels
+
+  - id: cp_add_safe_to_evict
+    track: cluster-policy
+    task_type: convert
+    path: imported/kyverno-policies/cp_add_safe_to_evict.yaml
+    difficulty: medium
+    description: "Annotate Pods with emptyDir volumes as safe-to-evict"
+    expected_output_kind: MutatingPolicy
+    kyverno_test_dir: imported/kyverno-tests/cp_add_safe_to_evict
+
+  - id: cp_add_default_resources
+    track: cluster-policy
+    task_type: convert
+    path: imported/kyverno-policies/cp_add_default_resources.yaml
+    difficulty: medium
+    description: "Set default resource requests/limits via foreach mutation"
+    expected_output_kind: MutatingPolicy
+    kyverno_test_dir: imported/kyverno-tests/cp_add_default_resources
+
+  # ========================================================================
+  # CONVERSION TASKS — ClusterPolicy → GeneratingPolicy (cpol→gpol)
+  # ========================================================================
+
+  - id: cp_add_networkpolicy_dns
+    track: cluster-policy
+    task_type: convert
+    path: imported/kyverno-policies/cp_add_networkpolicy_dns.yaml
+    difficulty: easy
+    description: "Generate DNS-egress NetworkPolicy when Namespace created"
+    expected_output_kind: GeneratingPolicy
+
+  - id: cp_add_ns_quota
+    track: cluster-policy
+    task_type: convert
+    path: imported/kyverno-policies/cp_add_ns_quota.yaml
+    difficulty: medium
+    description: "Generate ResourceQuota in new Namespaces with resource caps"
+    expected_output_kind: GeneratingPolicy
+    kyverno_test_dir: imported/kyverno-tests/cp_add_ns_quota
+
+  # ========================================================================
+  # CONVERSION TASKS — ClusterPolicy → ImageValidatingPolicy (cpol→ivpol)
+  # ========================================================================
+
+  - id: cp_verify_image_simple
+    track: cluster-policy
+    task_type: convert
+    path: imported/kyverno-policies/cp_verify_image_simple.yaml
+    difficulty: easy
+    description: "Verify cosign image signatures (upstream verify-image policy)"
+    expected_output_kind: ImageValidatingPolicy
+
+  # ========================================================================
+  # CONVERSION TASKS — Gatekeeper → ValidatingPolicy
+  # ========================================================================
+
+  - id: gk_required_labels
+    track: gatekeeper
+    task_type: convert
+    path: gatekeeper/required-labels.yaml
+    difficulty: medium
+    description: "ConstraintTemplate + Constraint requiring owner labels on Namespaces"
+    expected_output_kind: ValidatingPolicy
+
+  - id: gk_allowed_repos
+    track: gatekeeper
+    task_type: convert
+    path: gatekeeper/allowed-repos.yaml
+    difficulty: medium
+    description: "ConstraintTemplate + Constraint restricting container image registries"
+    expected_output_kind: ValidatingPolicy
+
+  - id: gk_container_limits
+    track: gatekeeper
+    task_type: convert
+    path: gatekeeper/container-limits.yaml
+    difficulty: medium
+    description: "ConstraintTemplate + Constraint enforcing container resource limits"
+    expected_output_kind: ValidatingPolicy
+
+  # ========================================================================
+  # CONVERSION TASKS — OPA/Rego → ValidatingPolicy
+  # ========================================================================
+
+  - id: opa_enforce_image_registry
+    track: opa
+    task_type: convert
+    path: opa/enforce-image-registry.rego
+    difficulty: medium
+    description: "Rego policy denying images from untrusted registries"
+    expected_output_kind: ValidatingPolicy
+
+  - id: opa_require_labels
+    track: opa
+    task_type: convert
+    path: opa/require-labels.rego
+    difficulty: easy
+    description: "Rego policy requiring owner and environment labels on Namespaces"
+    expected_output_kind: ValidatingPolicy
+
+  - id: opa_container_limits
+    track: opa
+    task_type: convert
+    path: opa/container-limits.rego
+    difficulty: medium
+    description: "Rego policy enforcing CPU and memory limits on all containers"
+    expected_output_kind: ValidatingPolicy
+
+  # ========================================================================
+  # CONVERSION TASKS — Sentinel → ValidatingPolicy
+  # ========================================================================
+
+  - id: sentinel_restrict_instance_types
+    track: sentinel
+    task_type: convert
+    path: sentinel/restrict-instance-types.sentinel
+    difficulty: hard
+    description: "Sentinel policy restricting allowed node instance types"
+    expected_output_kind: ValidatingPolicy
+
+  - id: sentinel_enforce_resource_limits
+    track: sentinel
+    task_type: convert
+    path: sentinel/enforce-resource-limits.sentinel
+    difficulty: medium
+    description: "Sentinel policy enforcing CPU and memory limits on containers"
+    expected_output_kind: ValidatingPolicy
+
+  # ========================================================================
+  # CONVERSION TASKS — CleanupPolicy → DeletingPolicy
+  # ========================================================================
+
+  - id: cleanup_completed_jobs
+    track: cleanup
+    task_type: convert
+    path: cleanup/cleanup-completed-jobs.yaml
+    difficulty: easy
+    description: "CleanupPolicy removing completed Jobs on a schedule"
+    expected_output_kind: DeletingPolicy
+
+  - id: cleanup_failed_pods
+    track: cleanup
+    task_type: convert
+    path: cleanup/cleanup-failed-pods.yaml
+    difficulty: easy
+    description: "CleanupPolicy removing Failed pods on a schedule"
+    expected_output_kind: DeletingPolicy
+
+  # ========================================================================
+  # GENERATION TASKS — ValidatingPolicy from natural language
+  # ========================================================================
+
+  - id: gen_require_labels
+    track: cluster-policy
+    task_type: generate
+    difficulty: easy
+    description: "requires all Pods to have the label 'app.kubernetes.io/name' set to a non-empty value. Deny admission if the label is missing or empty."
+    expected_output_kind: ValidatingPolicy
+
+  - id: gen_disallow_privileged
+    track: cluster-policy
+    task_type: generate
+    difficulty: easy
+    description: "denies any Pod with securityContext.privileged set to true on any container."
+    expected_output_kind: ValidatingPolicy
+
+  - id: gen_restrict_registries
+    track: cluster-policy
+    task_type: generate
+    difficulty: easy
+    description: "only allows container images from 'gcr.io/' and 'docker.io/library/' registries. Deny any image from other registries."
+    expected_output_kind: ValidatingPolicy
+
+  - id: gen_require_resource_limits
+    track: cluster-policy
+    task_type: generate
+    difficulty: medium
+    description: "requires CPU and memory limits on all containers, including initContainers, in Pods. Deny admission if any container is missing limits."
+    expected_output_kind: ValidatingPolicy
+
+  - id: gen_disallow_host_namespaces
+    track: cluster-policy
+    task_type: generate
+    difficulty: medium
+    description: "denies Pods that use hostNetwork, hostPID, or hostIPC. All three must be checked."
+    expected_output_kind: ValidatingPolicy
+
+  - id: gen_restrict_volume_types
+    track: cluster-policy
+    task_type: generate
+    difficulty: hard
+    description: "only allows these volume types: emptyDir, configMap, secret, projected, downwardAPI, and persistentVolumeClaim. Deny any Pod with other volume types like hostPath."
+    expected_output_kind: ValidatingPolicy
+
+  - id: gen_pod_security_baseline
+    track: cluster-policy
+    task_type: generate
+    difficulty: hard
+    description: "implements multiple Pod Security Standards baseline checks in a single policy: disallow privileged containers, disallow hostPID/hostIPC/hostNetwork, require non-root containers, and drop ALL capabilities."
+    expected_output_kind: ValidatingPolicy
+
+  # ========================================================================
+  # GENERATION TASKS — MutatingPolicy from natural language
+  # ========================================================================
+
+  - id: gen_add_default_labels
+    track: cluster-policy
+    task_type: generate
+    difficulty: easy
+    description: "adds the label 'managed-by: kyverno' to all new Deployments that do not already have it."
+    expected_output_kind: MutatingPolicy
+
+  - id: gen_inject_sidecar
+    track: cluster-policy
+    task_type: generate
+    difficulty: medium
+    description: "injects an Envoy sidecar container (image: envoyproxy/envoy:v1.28, port 9901) into any Pod that has the annotation 'inject-sidecar: true'."
+    expected_output_kind: MutatingPolicy
+
+  # ========================================================================
+  # GENERATION TASKS — GeneratingPolicy from natural language
+  # ========================================================================
+
+  - id: gen_create_networkpolicy
+    track: cluster-policy
+    task_type: generate
+    difficulty: medium
+    description: "generates a default-deny NetworkPolicy (deny all ingress and egress) whenever a new Namespace is created."
+    expected_output_kind: GeneratingPolicy
+
+  # ========================================================================
+  # STRESS TESTS (expect_failure)
+  # ========================================================================
+
+  - id: stress_malformed_yaml
+    track: cluster-policy
+    task_type: convert
+    path: stress/malformed-yaml.yaml
+    difficulty: stress
+    description: "Intentionally broken YAML to test graceful failure"
+    expected_output_kind: ValidatingPolicy
+    expect_failure: true
+
+  - id: stress_missing_spec
+    track: cluster-policy
+    task_type: convert
+    path: stress/missing-spec.yaml
+    difficulty: stress
+    description: "Valid YAML but missing spec entirely"
+    expected_output_kind: ValidatingPolicy
+    expect_failure: true
+
+  - id: stress_empty_rules
+    track: cluster-policy
+    task_type: convert
+    path: stress/empty-rules.yaml
+    difficulty: stress
+    description: "Policy with an empty rules list"
+    expected_output_kind: ValidatingPolicy
+    expect_failure: true

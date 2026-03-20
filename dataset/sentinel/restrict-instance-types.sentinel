@@ -1,0 +1,17 @@
+# Sentinel policy: restrict allowed Kubernetes node instance types.
+# Deny pods scheduled on nodes with unapproved instance types.
+
+import "tfplan/v2" as tfplan
+
+allowed_instance_types = [
+    "t3.medium",
+    "t3.large",
+    "m5.xlarge",
+]
+
+main = rule {
+    all tfplan.resource_changes as _, rc {
+        rc.type is "kubernetes_pod" and
+        rc.change.after.spec[0].node_selector["node.kubernetes.io/instance-type"] in allowed_instance_types
+    }
+}

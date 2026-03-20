@@ -1,0 +1,21 @@
+apiVersion: kyverno.io/v2beta1
+kind: CleanupPolicy
+metadata:
+  name: cleanup-completed-jobs
+  namespace: default
+  annotations:
+    policies.kyverno.io/title: Cleanup Completed Jobs
+    policies.kyverno.io/description: >-
+      Remove completed Jobs older than 24 hours to keep the cluster tidy.
+spec:
+  match:
+    any:
+      - resources:
+          kinds:
+            - Job
+  conditions:
+    all:
+      - key: "{{ target.status.completionTime }}"
+        operator: NotEquals
+        value: ""
+  schedule: "*/30 * * * *"

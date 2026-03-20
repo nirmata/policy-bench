@@ -1,0 +1,19 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: malformed-policy
+spec:
+  rules:
+    - name: bad-rule
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "This YAML is intentionally broken for stress testing"
+        pattern:
+          spec:
+            containers:
+              - : missing-key
+          badindent

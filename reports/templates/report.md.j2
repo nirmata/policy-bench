@@ -1,4 +1,4 @@
-# Policy Conversion Benchmark Report
+# Policy Conversion & Generation Benchmark Report
 
 Generated: {{ agg.generated_at }}
 
@@ -10,6 +10,28 @@ Generated: {{ agg.generated_at }}
 | {{ e.rank }} | {{ e.tool }} | {{ "%.0f%%" | format(e.pass_rate * 100) }} | {{ "%.1fs" | format(e.avg_time) if e.avg_time else "-" }} | {{ "$%.4f" | format(e.avg_cost) if e.avg_cost else "-" }} | {{ "%.2f" | format(e.avg_diff_score) if e.avg_diff_score is not none else "-" }} | {{ "%.2f" | format(e.composite_score) }} |
 {% endfor %}
 
+## Per-task-type (conversion vs generation)
+
+{% if agg.task_type_stats -%}
+{% for tt, stats in agg.task_type_stats.items() -%}
+- **{{ tt }}**: {{ stats.passed }}/{{ stats.total }} passed (schema {{ stats.schema_pass }}/{{ stats.total }}{% if stats.intent_total %}, intent {{ stats.intent_pass }}/{{ stats.intent_total }}{% endif %}{% if stats.semantic_total %}, semantic {{ stats.semantic_pass }}/{{ stats.semantic_total }}{% endif %}), avg time {{ "%.1fs" | format(stats.avg_time) if stats.avg_time else "N/A" }}
+{% endfor %}
+{% else -%}
+_(No task_type on results; re-run benchmark with current code.)_
+{% endif %}
+
+## Per-output-kind
+
+{% for kind, stats in agg.output_kind_stats.items() -%}
+- **{{ kind }}**: {{ stats.passed }}/{{ stats.total }} passed, avg {{ "%.1fs" | format(stats.avg_time) if stats.avg_time else "N/A" }}
+{% endfor %}
+
+## Per-difficulty
+
+{% for d, stats in agg.difficulty_stats.items() -%}
+- **{{ d }}**: {{ stats.passed }}/{{ stats.total }} passed, avg {{ "%.1fs" | format(stats.avg_time) if stats.avg_time else "N/A" }}
+{% endfor %}
+
 ## Per-Tool Summary
 
 {% for tool, stats in agg.tool_stats.items() -%}
@@ -18,7 +40,7 @@ Generated: {{ agg.generated_at }}
 - **Passed**: {{ stats.passed }}/{{ stats.total }} ({{ "%.0f%%" | format(stats.pass_rate * 100) }})
 - **Avg time**: {{ "%.1fs" | format(stats.avg_time) if stats.avg_time else "N/A" }}
 - **Avg cost**: {{ "$%.4f" | format(stats.avg_cost) if stats.avg_cost else "N/A" }}
-- **Avg diff score**: {{ "%.2f" | format(stats.avg_diff_score) if stats.avg_diff_score is not none else "N/A" }}
+- **Avg diff score** (convert only): {{ "%.2f" | format(stats.avg_diff_score) if stats.avg_diff_score is not none else "N/A" }}
 
 {% endfor %}
 
@@ -30,10 +52,10 @@ Generated: {{ agg.generated_at }}
 
 ## Failures
 
-{% set failures = agg.results | selectattr("success", "false") | list -%}
+{% set failures = agg.results | selectattr("success", "equalto", false) | list -%}
 {% if failures -%}
 {% for f in failures -%}
-- `{{ f.tool }}` / `{{ f.policy_id }}`: {{ f.error or (f.schema_errors | join("; ")) }}
+- `{{ f.tool }}` / `{{ f.policy_id | default("unknown") }}`{% if f.task_type is defined %} ({{ f.task_type }}){% endif %}: {{ f.error | default("", true) or ((f.schema_errors or []) | join("; ")) or ((f.intent_errors or []) | join("; ")) or "FAIL" }}
 {% endfor -%}
 {% else -%}
 No failures.

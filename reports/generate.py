@@ -35,11 +35,20 @@ TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 
 
-def _load_results() -> list[dict]:
-    """Load all result JSON files, preferring aggregated benchmark files."""
+def _load_results(include_files: list[str] | None = None) -> list[dict]:
+    """Load result JSON files from ``results/``.
+
+    Each file may be a JSON array of runs or a single run dict (must include
+    ``policy_id`` for dict rows). If *include_files* is set, only those
+    basenames under ``results/`` are loaded (useful for a clean demo report).
+    """
     results: list[dict] = []
-    for f in sorted(RESULTS_DIR.glob("*.json")):
-        if f.parent.name == "examples":
+    if include_files:
+        candidates = [RESULTS_DIR / name for name in include_files]
+    else:
+        candidates = sorted(RESULTS_DIR.glob("*.json"))
+    for f in candidates:
+        if not f.is_file() or f.parent.name == "examples":
             continue
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
@@ -210,15 +219,42 @@ def generate_markdown(agg: dict, leaderboard: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def generate_html(agg: dict, leaderboard: list[dict]) -> str:
-    """Generate a self-contained HTML dashboard."""
+def generate_html(
+    agg: dict, leaderboard: list[dict], config: dict | None = None
+) -> str:
+    """Generate a self-contained HTML dashboard (combined + conversion + generation)."""
+    results_all = agg["results"]
+    convert_results = [
+        r for r in results_all if r.get("task_type", "convert") == "convert"
+    ]
+    generate_results = [r for r in results_all if r.get("task_type") == "generate"]
+    convert_agg = _aggregate(convert_results)
+    generate_agg = _aggregate(generate_results)
+    leaderboard_convert = _compute_leaderboard(convert_agg["tool_stats"], config)
+    leaderboard_generate = _compute_leaderboard(generate_agg["tool_stats"], config)
+    has_convert = bool(convert_results)
+    has_generate = bool(generate_results)
+
     if Environment and TEMPLATES_DIR.exists():
         env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)))
         try:
             tpl = env.get_template("dashboard.html.j2")
-            return tpl.render(agg=agg, leaderboard=leaderboard)
-        except Exception:
-            pass
+            return tpl.render(
+                agg=agg,
+                leaderboard=leaderboard,
+                leaderboard_convert=leaderboard_convert,
+                leaderboard_generate=leaderboard_generate,
+                convert_results=convert_results,
+                generate_results=generate_results,
+                has_convert=has_convert,
+                has_generate=has_generate,
+            )
+        except Exception as exc:
+            print(
+                f"dashboard.html.j2 render failed ({exc!r}); "
+                "using minimal fallback. Install jinja2 (e.g. pip install -r requirements.txt).",
+                file=sys.stderr,
+            )
 
     # Fallback: inline HTML
     tools_json = json.dumps([e["tool"] for e in leaderboard])
@@ -255,7 +291,7 @@ def generate_html(agg: dict, leaderboard: list[dict]) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Policy Conversion Benchmark</title>
+<title>Policy conversion &amp; generation benchmark</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
   :root {{ --bg: #0d1117; --fg: #c9d1d9; --card: #161b22; --border: #30363d; --accent: #58a6ff; }}
@@ -277,7 +313,7 @@ def generate_html(agg: dict, leaderboard: list[dict]) -> str:
 </style>
 </head>
 <body>
-<h1>Policy Conversion Benchmark</h1>
+<h1>Policy conversion &amp; generation benchmark</h1>
 <p class="meta">Generated: {agg['generated_at']}</p>
 
 <div class="grid">
@@ -363,14 +399,14 @@ function filterTable() {{
 </html>"""
 
 
-def generate_all(config: dict | None = None) -> None:
+def generate_all(config: dict | None = None, include_files: list[str] | None = None) -> None:
     """Load results, generate reports, write to reports/output/."""
     if config is None and yaml:
         cfg_path = REPO_ROOT / "config.yaml"
         if cfg_path.exists():
             config = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
 
-    results = _load_results()
+    results = _load_results(include_files=include_files)
     if not results:
         print("No results found in results/. Run benchmark.py first.", file=sys.stderr)
         return
@@ -385,7 +421,7 @@ def generate_all(config: dict | None = None) -> None:
     md_path.write_text(md, encoding="utf-8")
     print(f"  Markdown report: {md_path}")
 
-    html = generate_html(agg, leaderboard)
+    html = generate_html(agg, leaderboard, config)
     html_path = OUTPUT_DIR / "dashboard.html"
     html_path.write_text(html, encoding="utf-8")
     print(f"  HTML dashboard:  {html_path}")
@@ -400,6 +436,13 @@ def main() -> int:
         help="Output format",
     )
     parser.add_argument("--output", help="Override output path (single format only)")
+    parser.add_argument(
+        "--from-results",
+        nargs="*",
+        metavar="FILE",
+        help="Only load these JSON files from results/ (basenames). "
+        "Example: --from-results benchmark_demo_conversion_generation.json",
+    )
     args = parser.parse_args()
 
     config = None
@@ -408,7 +451,7 @@ def main() -> int:
         if cfg_path.exists():
             config = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
 
-    results = _load_results()
+    results = _load_results(include_files=args.from_results)
     if not results:
         print("No results found in results/. Run benchmark.py first.", file=sys.stderr)
         return 1
@@ -425,7 +468,7 @@ def main() -> int:
         print(f"  Markdown: {p}")
 
     if args.format in ("html", "all"):
-        html = generate_html(agg, leaderboard)
+        html = generate_html(agg, leaderboard, config)
         p = Path(args.output) if args.output and args.format == "html" else OUTPUT_DIR / "dashboard.html"
         p.write_text(html, encoding="utf-8")
         print(f"  HTML: {p}")

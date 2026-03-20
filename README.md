@@ -64,6 +64,8 @@ If you run `benchmark.py` before sync, ClusterPolicy paths under `dataset/import
 
 Reports are written to `reports/output/` (Markdown + HTML dashboard).
 
+The HTML dashboard expects **Jinja2** (see `requirements.txt`). Use your project venv so `python3` resolves to an interpreter with deps installed (e.g. `.venv/bin/python reports/generate.py`). If Jinja2 is missing, the generator falls back to a minimal single-table HTML and prints a warning.
+
 ---
 
 ## Pipeline Overview
@@ -84,7 +86,7 @@ dataset/  -->  benchmark.py  -->  runners/  -->  output/
 2. **Runners** — benchmark harnesses that wrap each tool (nctl, Claude, Cursor). Each harness sends the prompt, captures output, measures wall-clock time, estimates tokens/cost, and returns a standard `RunResult`.
 3. **Evaluators** — schema validation, intent preservation, semantic tests (Kyverno CLI), diff scoring.
 4. **Results** — rich JSON per run (time, tokens, cost, diff_score, pass/fail).
-5. **Reports** — aggregated Markdown reports, HTML dashboard with charts, leaderboard.
+5. **Reports** — aggregated Markdown reports, HTML dashboard with charts and leaderboard for **combined**, **conversion-only**, and **generation-only** slices.
 
 ---
 
@@ -373,10 +375,13 @@ For **generation** tasks, `intent_pass` is `null` and `diff_score` is `null`.
 ## Report Generation
 
 ```bash
-# Generate both Markdown and HTML
+# Generate both Markdown and HTML (loads all results/*.json that qualify)
 python3 reports/generate.py
 
-# Or via the main orchestrator
+# Only use specific result files (avoid mixing ad-hoc runs)
+python3 reports/generate.py --from-results benchmark_demo_conversion_generation.json
+
+# Or via the main orchestrator (same as loading all of results/*.json)
 python3 benchmark.py --report
 
 # Markdown only
@@ -386,9 +391,13 @@ python3 reports/generate.py --format markdown
 python3 reports/generate.py --format html
 ```
 
-**Markdown report** includes: leaderboard, per-tool summary, per-track breakdown, per-task-type breakdown, per-difficulty breakdown, per-output-kind breakdown, failure analysis.
+Outputs go to **`reports/output/report.md`** and **`reports/output/dashboard.html`**.
 
-**HTML dashboard** includes: interactive charts (Chart.js), filterable results table, leaderboard with composite scores.
+**Markdown report** includes: leaderboard, **conversion vs generation (per-task-type)**, per-output-kind, per-difficulty, per-tool, per-track, failures (tagged with `convert` / `generate`).
+
+**HTML dashboard** includes: interactive charts (Chart.js), **“By task type”** summary table, filterable results (**tool / task type / track**), columns for **Task** (`convert`|`generate`) and **Output kind**, leaderboard with composite scores.
+
+An illustrative combined run (8 conversion + 6 generation rows across three tools) lives at **`results/benchmark_demo_conversion_generation.json`**; generate from it with `--from-results` as above to preview the report without running the full benchmark.
 
 ### Leaderboard scoring
 

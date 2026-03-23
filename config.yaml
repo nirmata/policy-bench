@@ -67,7 +67,7 @@ task_types:
 evaluation:
   skip_kyverno_test: false
   kubectl_dry_run: true
-  timeout_seconds: 360
+  timeout_seconds: 600
 
 leaderboard:
   weights:

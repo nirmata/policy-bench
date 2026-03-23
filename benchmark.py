@@ -24,7 +24,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -58,8 +60,29 @@ def _load_dataset() -> list[dict]:
     return data.get("policies") or []
 
 
-def _get_runner(tool_name: str) -> ToolRunner:
-    """Lazy-import and instantiate the runner for a tool."""
+def _get_runner(tool_name: str, *, tool_script: str | None = None) -> ToolRunner:
+    """Resolve the runner for a tool.
+
+    Resolution order:
+      1. Explicit --tool-script path
+      2. Convention: run_tool_<name>.sh in repo root
+      3. Built-in Python runner (nctl, claude, cursor)
+    """
+    from runners.script_runner import ScriptRunner
+
+    # Explicit script path
+    if tool_script:
+        script_path = Path(tool_script)
+        if not script_path.is_file():
+            raise FileNotFoundError(f"Tool script not found: {tool_script}")
+        return ScriptRunner(tool_name, script_path)
+
+    # Convention-based script discovery
+    script_path = REPO_ROOT / f"run_tool_{tool_name}.sh"
+    if script_path.is_file():
+        return ScriptRunner(tool_name, script_path)
+
+    # Built-in Python runners
     if tool_name == "nctl":
         from runners.nctl_runner import NctlRunner
         return NctlRunner()
@@ -69,7 +92,11 @@ def _get_runner(tool_name: str) -> ToolRunner:
     if tool_name == "cursor":
         from runners.cursor_runner import CursorRunner
         return CursorRunner()
-    raise ValueError(f"Unknown tool: {tool_name!r}")
+    raise ValueError(
+        f"Unknown tool: {tool_name!r}. No run_tool_{tool_name}.sh found "
+        f"and no built-in runner exists. Create run_tool_{tool_name}.sh or "
+        f"pass --tool-script."
+    )
 
 
 def _run_single(
@@ -79,10 +106,13 @@ def _run_single(
     *,
     max_attempts: int = 1,
     eval_config: dict | None = None,
+    tool_script: str | None = None,
+    run_number: int = 1,
+    total_runs: int = 1,
 ) -> dict:
     """Run one (tool, policy) pair and return the results dict."""
     eval_config = eval_config or {}
-    runner = _get_runner(tool_name)
+    runner = _get_runner(tool_name, tool_script=tool_script)
 
     if not runner.is_available():
         return {
@@ -120,7 +150,9 @@ def _run_single(
 
     # Validate input (skip for generation tasks and stress tests)
     if not is_generate and not expect_failure and input_path:
-        in_pass, in_errors = validate_input(track, input_path)
+        in_pass, in_errors = validate_input(
+            track, input_path, use_kubectl=eval_config.get("kubectl_dry_run", True),
+        )
         if not in_pass:
             return {
                 "tool": tool_name,
@@ -132,7 +164,10 @@ def _run_single(
             }
 
     output_dir = REPO_ROOT / "output" / tool_name
-    output_path = output_dir / f"{policy_id}.yaml"
+    if total_runs > 1:
+        output_path = output_dir / f"{policy_id}_run{run_number}.yaml"
+    else:
+        output_path = output_dir / f"{policy_id}.yaml"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     timeout = eval_config.get("timeout_seconds", 120)
@@ -140,14 +175,21 @@ def _run_single(
     last_result: dict = {}
 
     for attempt in range(1, max_attempts + 1):
-        prompt = build_prompt(
-            track,
-            str(input_path) if input_path else None,
-            str(output_path),
-            output_kind=expected_kind,
-            task_type=task_type,
-            description=policy.get("description"),
-        )
+        # Per-task prompt override takes precedence over template
+        if policy.get("prompt"):
+            prompt = policy["prompt"].format(
+                input_path=input_path or "",
+                output_path=output_path,
+            )
+        else:
+            prompt = build_prompt(
+                track,
+                str(input_path) if input_path else None,
+                str(output_path),
+                output_kind=expected_kind,
+                task_type=task_type,
+                description=policy.get("description"),
+            )
 
         # Augment prompt on retry with previous errors
         if attempt > 1 and (last_result.get("schema_errors") or last_result.get("intent_errors")):
@@ -189,7 +231,7 @@ def _run_single(
 
         timestamp_str = datetime.now(timezone.utc).isoformat()
         last_result = {
-            "run_id": f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{tool_name}_{policy_id}",
+            "run_id": f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{tool_name}_{policy_id}_r{run_number}",
             "tool": tool_name,
             "policy_id": policy_id,
             "track": track,
@@ -293,11 +335,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Policy Conversion Benchmark")
     parser.add_argument("--tool", nargs="*", help="Tools to run (default: all enabled)")
     parser.add_argument("--track", help="Filter by conversion track")
-    parser.add_argument("--policy-id", help="Run a single policy by ID")
+    parser.add_argument("--policy-id", nargs="+", help="Run one or more policies by ID")
     parser.add_argument("--difficulty", help="Filter by difficulty (easy, medium, hard, stress)")
     parser.add_argument("--task-type", choices=["convert", "generate"], help="Filter by task type")
     parser.add_argument("--output-kind", help="Filter by expected output kind (e.g. MutatingPolicy)")
     parser.add_argument("--max-attempts", type=int, default=1, help="Max attempts per policy (iterative improvement)")
+    parser.add_argument("--runs", type=int, default=1, help="Number of runs per (tool, policy) pair for averaging")
+    parser.add_argument("--workers", type=int, default=1, help="Parallel workers per tool (default: 1 = sequential)")
+    parser.add_argument("--tool-script", help="Path to tool runner script (overrides auto-detection from --tool)")
     parser.add_argument("--skip-kyverno-test", action="store_true")
     parser.add_argument("--no-kubectl", action="store_true")
     parser.add_argument("--report", action="store_true", help="Generate report from existing results (no runs)")
@@ -322,7 +367,7 @@ def main() -> int:
 
     # Filter policies
     if args.policy_id:
-        policies = [p for p in policies if p["id"] == args.policy_id]
+        policies = [p for p in policies if p["id"] in args.policy_id]
     if args.track:
         policies = [p for p in policies if p["track"] == args.track]
     if args.difficulty:
@@ -350,31 +395,76 @@ def main() -> int:
 
     all_results: list[dict] = []
 
+    num_runs = args.runs
+    num_workers = args.workers
+
     for tool_name in tools_to_run:
         tcfg = tool_configs.get(tool_name, {})
-        print(f"\n--- Running {tool_name} ---")
+        runs_label = f" (x{num_runs})" if num_runs > 1 else ""
+        workers_label = f", {num_workers} workers" if num_workers > 1 else ""
+        print(f"\n--- Running {tool_name}{runs_label}{workers_label} ---")
 
+        # Build list of all (policy, run_number) jobs for this tool
+        jobs: list[tuple[dict, int]] = []
         for policy in policies:
-            task_type = policy.get("task_type", "convert")
-            label = f"{policy['id']} ({task_type}/{policy['track']})"
-            print(f"  [{tool_name}] {label} ...", end=" ", flush=True)
+            for run_num in range(1, num_runs + 1):
+                jobs.append((policy, run_num))
 
+        def _execute_job(job: tuple[dict, int]) -> dict:
+            policy, run_num = job
             result = _run_single(
                 tool_name,
                 tcfg,
                 policy,
                 max_attempts=args.max_attempts,
                 eval_config=eval_config,
+                tool_script=args.tool_script,
+                run_number=run_num,
+                total_runs=num_runs,
             )
-            all_results.append(result)
+            result["run_number"] = run_num
+            result["total_runs"] = num_runs
+            return result
 
-            status = "PASS" if result.get("success") else "FAIL"
-            print(status)
+        if num_workers <= 1:
+            # Sequential execution (original behavior)
+            for policy, run_num in jobs:
+                task_type = policy.get("task_type", "convert")
+                label = f"{policy['id']} ({task_type}/{policy['track']})"
+                run_tag = f" run {run_num}/{num_runs}" if num_runs > 1 else ""
+                print(f"  [{tool_name}] {label}{run_tag} ...", end=" ", flush=True)
 
-            # Save individual result
-            run_id = result.get("run_id", f"run_{tool_name}_{policy['id']}")
-            out_json = results_dir / f"{run_id}.json"
-            out_json.write_text(json.dumps(result, indent=2), encoding="utf-8")
+                result = _execute_job((policy, run_num))
+                all_results.append(result)
+
+                status = "PASS" if result.get("success") else "FAIL"
+                print(status)
+
+                run_id = result.get("run_id", f"run_{tool_name}_{policy['id']}")
+                out_json = results_dir / f"{run_id}.json"
+                out_json.write_text(json.dumps(result, indent=2), encoding="utf-8")
+        else:
+            # Parallel execution
+            completed = 0
+            total = len(jobs)
+            with ThreadPoolExecutor(max_workers=num_workers) as pool:
+                futures = {pool.submit(_execute_job, job): job for job in jobs}
+                for future in as_completed(futures):
+                    policy, run_num = futures[future]
+                    completed += 1
+                    task_type = policy.get("task_type", "convert")
+                    label = f"{policy['id']} ({task_type}/{policy['track']})"
+                    run_tag = f" r{run_num}" if num_runs > 1 else ""
+
+                    result = future.result()
+                    all_results.append(result)
+
+                    status = "PASS" if result.get("success") else "FAIL"
+                    print(f"  [{completed}/{total}] [{tool_name}] {label}{run_tag} ... {status}")
+
+                    run_id = result.get("run_id", f"run_{tool_name}_{policy['id']}")
+                    out_json = results_dir / f"{run_id}.json"
+                    out_json.write_text(json.dumps(result, indent=2), encoding="utf-8")
 
     _print_summary(all_results)
 

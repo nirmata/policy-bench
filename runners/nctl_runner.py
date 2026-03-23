@@ -30,13 +30,18 @@ class NctlRunner(ToolRunner):
     _GENERATING_SKILL = "Reading file from ~/.nirmata/nctl/skills/policy-skills/generating-policies/SKILL.md"
     _AGENT_OK = "Agent completed successfully!"
 
+    def _nctl_bin(self) -> str:
+        import os
+        return os.environ.get("NCTL_BIN") or shutil.which("nctl") or "nctl"
+
     def is_available(self) -> bool:
-        return shutil.which("nctl") is not None
+        import os
+        return bool(os.environ.get("NCTL_BIN")) or shutil.which("nctl") is not None
 
     def _get_version(self) -> str | None:
         try:
             proc = subprocess.run(
-                ["nctl", "version"],
+                [self._nctl_bin(), "version"],
                 capture_output=True, text=True, timeout=10,
             )
             return proc.stdout.strip().splitlines()[0] if proc.stdout else None
@@ -52,6 +57,7 @@ class NctlRunner(ToolRunner):
         timeout_seconds: int = 120,
         config: dict | None = None,
     ) -> RunResult:
+        nctl_bin = self._nctl_bin()
         if not self.is_available():
             return RunResult(
                 output_path=output_path,
@@ -65,7 +71,9 @@ class NctlRunner(ToolRunner):
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         cmd = [
-            "nctl", "ai",
+            nctl_bin, "ai",
+            "--provider", "bedrock",
+            "--model", "us.anthropic.claude-sonnet-4-6",
             "--allowed-dirs", str(repo_root),
             "--prompt", prompt,
             "--skip-permission-checks",

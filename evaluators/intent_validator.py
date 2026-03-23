@@ -37,18 +37,34 @@ def _validation_action_from_cluster_policy(doc: dict) -> str:
 
 
 def _kinds_from_output_policy(doc: dict) -> set[str]:
-    """Extract target resource kinds from any Kyverno 1.16+ output policy."""
+    """Extract target resource kinds from any Kyverno 1.16+ output policy.
+
+    Kyverno 1.16+ uses spec.matchConstraints.resourceRules instead of
+    spec.rules[].match, but also falls back to spec.rules for compat.
+    """
     kinds: set[str] = set()
-    for rule in (doc.get("spec") or {}).get("rules") or []:
-        for block in (
-            (rule.get("match") or {}).get("any")
-            or (rule.get("match") or {}).get("all")
-            or []
-        ):
-            for k in (block.get("resources") or {}).get("kinds") or []:
-                kk = (k or "").strip().lower()
-                if kk:
-                    kinds.add(kk + "s" if not kk.endswith("s") else kk)
+    spec = doc.get("spec") or {}
+
+    # Kyverno 1.16+: spec.matchConstraints.resourceRules
+    for rr in (spec.get("matchConstraints") or {}).get("resourceRules") or []:
+        for k in rr.get("resources") or []:
+            kk = (k or "").strip().lower()
+            if kk:
+                kinds.add(kk + "s" if not kk.endswith("s") else kk)
+
+    # Legacy / fallback: spec.rules[].match
+    if not kinds:
+        for rule in spec.get("rules") or []:
+            for block in (
+                (rule.get("match") or {}).get("any")
+                or (rule.get("match") or {}).get("all")
+                or []
+            ):
+                for k in (block.get("resources") or {}).get("kinds") or []:
+                    kk = (k or "").strip().lower()
+                    if kk:
+                        kinds.add(kk + "s" if not kk.endswith("s") else kk)
+
     return kinds
 
 
@@ -57,7 +73,23 @@ def _validation_actions_from_validating_policy(doc: dict) -> list[str]:
 
 
 def _has_rules(doc: dict) -> bool:
-    return bool((doc.get("spec") or {}).get("rules"))
+    """Check if output policy has rules/validations/mutations/generate content.
+
+    Kyverno 1.16+ uses kind-specific field names instead of spec.rules:
+      - ValidatingPolicy: spec.validations
+      - MutatingPolicy: spec.mutations
+      - GeneratingPolicy: spec.rules or spec.generate
+      - ImageValidatingPolicy: spec.validations or spec.imageRules
+    """
+    spec = doc.get("spec") or {}
+    return bool(
+        spec.get("rules")
+        or spec.get("validations")
+        or spec.get("mutations")
+        or spec.get("generate")
+        or spec.get("imageRules")
+        or spec.get("attestors")
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -197,10 +229,9 @@ def _validate_intent_gatekeeper(
 def _validate_intent_opa(
     _input_text: str, output_doc: dict
 ) -> tuple[bool, list[str]]:
-    """Basic OPA -> Kyverno intent check: output must have rules with match blocks."""
+    """Basic OPA -> Kyverno intent check: output must have rules/validations."""
     errors: list[str] = []
-    rules = (output_doc.get("spec") or {}).get("rules") or []
-    if not rules:
+    if not _has_rules(output_doc):
         errors.append("Converted policy has no rules (OPA source should produce at least one)")
     return len(errors) == 0, errors
 
@@ -210,8 +241,7 @@ def _validate_intent_sentinel(
 ) -> tuple[bool, list[str]]:
     """Basic Sentinel -> Kyverno intent check."""
     errors: list[str] = []
-    rules = (output_doc.get("spec") or {}).get("rules") or []
-    if not rules:
+    if not _has_rules(output_doc):
         errors.append(
             "Converted policy has no rules (Sentinel source should produce at least one)"
         )

@@ -17,6 +17,7 @@ VALIDATING_POLICY_KINDS = {
     "MutatingPolicy",
     "GeneratingPolicy",
     "DeletingPolicy",
+    "NamespacedDeletingPolicy",
     "ImageValidatingPolicy",
 }
 POLICIES_APIVERSION_PREFIX = "policies.kyverno.io/"
@@ -56,6 +57,9 @@ def validate_schema(
     allowed_kinds = VALIDATING_POLICY_KINDS
     if expected_kind:
         allowed_kinds = {expected_kind}
+        # DeletingPolicy and NamespacedDeletingPolicy are both valid for cleanup conversions
+        if expected_kind == "DeletingPolicy":
+            allowed_kinds.add("NamespacedDeletingPolicy")
 
     if kind not in allowed_kinds:
         errors.append(

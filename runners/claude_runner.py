@@ -82,7 +82,8 @@ class ClaudeRunner(ToolRunner):
             "claude",
             "-p", full_prompt,
             "--output-format", "json",
-            "--allowedTools", "Read,Write,Shell",
+            "--allowedTools", "Read,Write,Bash",
+            "--model", "sonnet",
         ]
 
         start = time.monotonic()

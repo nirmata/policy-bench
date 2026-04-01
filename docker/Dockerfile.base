@@ -1,0 +1,38 @@
+# Shared base image for benchmark containers.
+# debian-slim (not Alpine) — cursor-agent requires glibc.
+# kubectl fetched + checksum-verified at build time.
+
+# --- Stage 1: fetch kubectl ---
+FROM debian:bookworm-slim AS fetch
+ARG TARGETARCH
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    KUBE_VERSION="$(curl -fsSL https://dl.k8s.io/release/stable.txt)"; \
+    curl -fsSL "https://dl.k8s.io/release/${KUBE_VERSION}/bin/linux/${TARGETARCH}/kubectl" -o /kubectl; \
+    KUBE_SHA256="$(curl -fsSL "https://dl.k8s.io/release/${KUBE_VERSION}/bin/linux/${TARGETARCH}/kubectl.sha256")"; \
+    echo "${KUBE_SHA256}  /kubectl" | sha256sum -c -; \
+    chmod +x /kubectl
+
+# --- Stage 2: minimal runtime ---
+FROM debian:bookworm-slim
+ARG TARGETARCH
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        bash \
+        curl \
+        jq \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=fetch /kubectl /usr/local/bin/kubectl
+
+RUN useradd --uid 65532 --shell /bin/bash --create-home --home-dir /home/benchmark benchmark \
+    && mkdir -p /workspace/output \
+    && chown -R benchmark:benchmark /workspace
+
+ENV HOME=/home/benchmark
+USER benchmark
+WORKDIR /workspace

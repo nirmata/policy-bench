@@ -1,0 +1,28 @@
+# Claude Code benchmark container.
+# Installs claude-code CLI via npm.
+#
+# Auth env vars (passed at runtime via --env-file):
+#   ANTHROPIC_API_KEY
+
+FROM benchmark-base
+
+USER root
+
+# Install Node.js 20 LTS (curl available from base image)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && apt-get purge -y gnupg \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code CLI globally.
+# NOTE: No version pin — rebuild the image to get a new version.
+RUN npm install -g @anthropic-ai/claude-code
+
+COPY entrypoints/run-claude.sh /entrypoints/run-claude.sh
+RUN chmod +x /entrypoints/run-claude.sh
+
+USER benchmark
+ENTRYPOINT ["/entrypoints/run-claude.sh"]

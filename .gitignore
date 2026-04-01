@@ -27,6 +27,9 @@ blind-eval/.mapping.json
 blind-eval/scores.json
 blind-eval/revealed_scores.json
 
+# Docker secrets (API keys for containerized benchmarks)
+docker/secrets/
+
 # Kyverno policies sync (see scripts/sync_kyverno_policies.py)
 dataset/.cache/
 dataset/imported/**

@@ -1,0 +1,40 @@
+# Cursor agent benchmark container.
+# Installs cursor-agent CLI (standalone, not the Electron editor).
+#
+# Known caveats (as of March 2026):
+#   - CLI may hang after completion — entrypoint wraps in timeout
+#   - MCP trust files pre-created to avoid interactive prompt
+#   - No stdin pipe — prompt passed as CLI argument
+#
+# Auth env vars (passed at runtime via --env-file):
+#   CURSOR_API_KEY
+
+FROM benchmark-base
+
+USER root
+
+# Install cursor-agent as the benchmark user (installs to ~/.local/bin/).
+# cursor-agent needs: libc6, libgcc-s1 (present in debian-slim), curl (from base).
+# NOTE: No version pin available — cursor's install script always fetches latest.
+# Rebuild the image to get a new version; record the version in benchmark results.
+USER benchmark
+RUN curl -fsSL https://cursor.com/install | bash
+
+# Pre-create MCP trust and permission files to avoid interactive prompts
+RUN mkdir -p /home/benchmark/.cursor/projects/workspace \
+    && echo '{}' > /home/benchmark/.cursor/projects/workspace/mcp-approvals.json \
+    && mkdir -p /home/benchmark/.cursor \
+    && cat > /home/benchmark/.cursor/cli-config.json <<'EOF'
+{
+  "permissions": {
+    "allow": ["file:read:/workspace/**", "file:write:/workspace/**", "shell:*"]
+  }
+}
+EOF
+
+USER root
+COPY entrypoints/run-cursor.sh /entrypoints/run-cursor.sh
+RUN chmod +x /entrypoints/run-cursor.sh
+
+USER benchmark
+ENTRYPOINT ["/entrypoints/run-cursor.sh"]

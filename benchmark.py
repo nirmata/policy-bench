@@ -60,14 +60,24 @@ def _load_dataset() -> list[dict]:
     return data.get("policies") or []
 
 
-def _get_runner(tool_name: str, *, tool_script: str | None = None) -> ToolRunner:
+def _get_runner(
+    tool_name: str,
+    *,
+    tool_script: str | None = None,
+    containerized: bool = False,
+) -> ToolRunner:
     """Resolve the runner for a tool.
 
     Resolution order:
+      0. --containerized → ContainerRunner (Docker isolation)
       1. Explicit --tool-script path
       2. Convention: run_tool_<name>.sh in repo root
       3. Built-in Python runner (nctl, claude, cursor)
     """
+    if containerized:
+        from runners.container_runner import ContainerRunner
+        return ContainerRunner(tool_name)
+
     from runners.script_runner import ScriptRunner
 
     # Explicit script path
@@ -107,12 +117,13 @@ def _run_single(
     max_attempts: int = 1,
     eval_config: dict | None = None,
     tool_script: str | None = None,
+    containerized: bool = False,
     run_number: int = 1,
     total_runs: int = 1,
 ) -> dict:
     """Run one (tool, policy) pair and return the results dict."""
     eval_config = eval_config or {}
-    runner = _get_runner(tool_name, tool_script=tool_script)
+    runner = _get_runner(tool_name, tool_script=tool_script, containerized=containerized)
 
     if not runner.is_available():
         return {
@@ -345,6 +356,7 @@ def main() -> int:
     parser.add_argument("--tool-script", help="Path to tool runner script (overrides auto-detection from --tool)")
     parser.add_argument("--skip-kyverno-test", action="store_true")
     parser.add_argument("--no-kubectl", action="store_true")
+    parser.add_argument("--containerized", action="store_true", help="Run tools in isolated Docker containers (no config/memory/skills leak)")
     parser.add_argument("--report", action="store_true", help="Generate report from existing results (no runs)")
     args = parser.parse_args()
 
@@ -419,6 +431,7 @@ def main() -> int:
                 max_attempts=args.max_attempts,
                 eval_config=eval_config,
                 tool_script=args.tool_script,
+                containerized=args.containerized,
                 run_number=run_num,
                 total_runs=num_runs,
             )

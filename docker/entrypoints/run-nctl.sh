@@ -12,10 +12,15 @@ if [ -z "$PROMPT" ]; then
 fi
 
 # --force required for non-interactive mode inside containers
-exec nctl ai \
-  --prompt "$PROMPT" \
-  --skip-permission-checks \
-  --force \
-  --allowed-dirs /workspace \
-  --provider "${NCTL_PROVIDER:-bedrock}" \
-  --model "${NCTL_MODEL:-us.anthropic.claude-sonnet-4-6}"
+CMD=(nctl ai
+  --prompt "$PROMPT"
+  --skip-permission-checks
+  --force
+  --allowed-dirs /workspace
+  --provider "${NCTL_PROVIDER:-nirmata}"
+)
+# Only pass --model if explicitly set (default is provider-specific)
+if [ -n "${NCTL_MODEL:-}" ]; then
+  CMD+=(--model "$NCTL_MODEL")
+fi
+exec "${CMD[@]}"

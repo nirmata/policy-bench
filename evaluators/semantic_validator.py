@@ -18,10 +18,23 @@ def _strip_ansi(text: str) -> str:
     return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
+# New policy types don't have named rules — kyverno test shows "Excluded"
+# if a rule field is present but doesn't match.
+_NEW_POLICY_KINDS = {
+    "ValidatingPolicy",
+    "MutatingPolicy",
+    "GeneratingPolicy",
+    "DeletingPolicy",
+    "NamespacedDeletingPolicy",
+    "ImageValidatingPolicy",
+}
+
+
 def run_kyverno_test(
     test_dir: Path,
     *,
     output_policy_name: str | None = None,
+    output_policy_kind: str | None = None,
     policy_under_test: Path | None = None,
     timeout_sec: int = 60,
 ) -> tuple[bool, list[str], bool]:
@@ -35,6 +48,10 @@ def run_kyverno_test(
 
     If *output_policy_name* is set, patches ``results[].policy`` to match the
     converted policy's ``metadata.name``.
+
+    If *output_policy_kind* is a new policy type (ValidatingPolicy, etc.),
+    strips the ``rule`` field from results entries — new types don't have
+    named rules and kyverno test marks them "Excluded" if present.
     """
     if not shutil.which("kyverno"):
         return False, [], True
@@ -72,10 +89,14 @@ def run_kyverno_test(
                 if isinstance(doc, dict):
                     if policy_under_test is not None:
                         doc["policies"] = [str(policy_under_test.resolve())]
-                    if output_policy_name and "results" in doc:
+                    if "results" in doc:
                         for r in doc["results"]:
-                            if isinstance(r, dict) and "policy" in r:
+                            if not isinstance(r, dict):
+                                continue
+                            if output_policy_name and "policy" in r:
                                 r["policy"] = output_policy_name
+                            if output_policy_kind in _NEW_POLICY_KINDS:
+                                r.pop("rule", None)
                 (cleanup_dir / "kyverno-test.yaml").write_text(
                     yaml.dump(doc, default_flow_style=False, sort_keys=False),
                     encoding="utf-8",

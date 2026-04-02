@@ -203,8 +203,8 @@ def _run_single(
             )
 
         # Augment prompt on retry with previous errors
-        if attempt > 1 and (last_result.get("schema_errors") or last_result.get("intent_errors")):
-            prev_errs = last_result.get("schema_errors", []) + last_result.get("intent_errors", [])
+        if attempt > 1 and last_result.get("schema_errors"):
+            prev_errs = last_result.get("schema_errors", [])
             prompt += (
                 "\n\nThe previous attempt had these errors:\n"
                 + "\n".join(f"- {e}" for e in prev_errs)
@@ -238,7 +238,12 @@ def _run_single(
                 task_type=task_type,
             )
 
-        success = run_result.success and eval_result.get("schema_pass", False)
+        # Success = tool ran + schema/CEL pass + functional pass (or skipped)
+        schema_ok = eval_result.get("schema_pass", False)
+        semantic = eval_result.get("semantic_pass")
+        semantic_skipped = eval_result.get("semantic_skipped", True)
+        functional_ok = semantic_skipped or (semantic is True)
+        success = run_result.success and schema_ok and functional_ok
 
         timestamp_str = datetime.now(timezone.utc).isoformat()
         last_result = {
@@ -277,33 +282,25 @@ def _print_summary(results: list[dict]) -> None:
     print()
     hdr = (
         f"  {'Tool':<10} {'Policy':<35} {'Type':<9} {'Kind':<20} "
-        f"{'Diff':>4} {'Schema':>7} {'Intent':>7} {'Semantic':>9} {'Time(s)':>8}"
+        f"{'Schema+CEL':>11} {'Functional':>11} {'Time(s)':>8}"
     )
     print(hdr)
     print("  " + "-" * (len(hdr) - 2))
 
-    schema_total = intent_total = semantic_total = 0
-    schema_pass_n = intent_pass_n = semantic_pass_n = 0
-    intent_applicable = 0
+    schema_total = schema_pass_n = 0
+    semantic_total = semantic_pass_n = 0
 
     for r in results:
         task_type = r.get("task_type", "convert")
         kind_short = (r.get("expected_output_kind") or "-")[:18]
         t = r.get("conversion_time_seconds")
         time_str = f"{t:.1f}" if t else "-"
-        diff = r.get("diff_score")
-        diff_str = f"{diff:.2f}" if diff is not None else "-"
 
         s_pass = r.get("schema_pass")
-        i_pass = r.get("intent_pass")
         sem = r.get("semantic_pass")
         sem_skip = r.get("semantic_skipped", True)
 
         s_str = "PASS" if s_pass else ("FAIL" if s_pass is not None else "-")
-        if i_pass is None:
-            i_str = "\u2014"  # em-dash for generation tasks
-        else:
-            i_str = "PASS" if i_pass else "FAIL"
         if sem_skip:
             sem_str = "SKIP"
         elif sem is None:
@@ -313,28 +310,21 @@ def _print_summary(results: list[dict]) -> None:
 
         print(
             f"  {r['tool']:<10} {r['policy_id']:<35} {task_type:<9} {kind_short:<20} "
-            f"{diff_str:>4} {s_str:>7} {i_str:>7} {sem_str:>9} {time_str:>8}"
+            f"{s_str:>11} {sem_str:>11} {time_str:>8}"
         )
 
         schema_total += 1
         if s_pass:
             schema_pass_n += 1
-        if i_pass is not None:
-            intent_applicable += 1
-            intent_total += 1
-            if i_pass:
-                intent_pass_n += 1
         if not sem_skip:
             semantic_total += 1
             if sem:
                 semantic_pass_n += 1
 
     print()
-    parts = [f"Schema: {schema_pass_n}/{schema_total}"]
-    if intent_applicable:
-        parts.append(f"Intent: {intent_pass_n}/{intent_total} (convert only)")
+    parts = [f"Schema+CEL: {schema_pass_n}/{schema_total}"]
     if semantic_total:
-        parts.append(f"Semantic: {semantic_pass_n}/{semantic_total}")
+        parts.append(f"Functional: {semantic_pass_n}/{semantic_total}")
     times = [r.get("conversion_time_seconds") for r in results if r.get("conversion_time_seconds")]
     if times:
         parts.append(f"Avg: {sum(times)/len(times):.1f}s")
@@ -410,13 +400,13 @@ def main() -> int:
     num_runs = args.runs
     num_workers = args.workers
 
-    for tool_name in tools_to_run:
+    def _run_tool(tool_name: str) -> tuple[list[dict], list[str]]:
+        """Run all jobs for a single tool. Returns (results, log_lines)."""
         tcfg = tool_configs.get(tool_name, {})
         runs_label = f" (x{num_runs})" if num_runs > 1 else ""
         workers_label = f", {num_workers} workers" if num_workers > 1 else ""
-        print(f"\n--- Running {tool_name}{runs_label}{workers_label} ---")
+        lines: list[str] = [f"\n--- Running {tool_name}{runs_label}{workers_label} ---"]
 
-        # Build list of all (policy, run_number) jobs for this tool
         jobs: list[tuple[dict, int]] = []
         for policy in policies:
             for run_num in range(1, num_runs + 1):
@@ -439,25 +429,24 @@ def main() -> int:
             result["total_runs"] = num_runs
             return result
 
+        tool_results: list[dict] = []
+
         if num_workers <= 1:
-            # Sequential execution (original behavior)
             for policy, run_num in jobs:
                 task_type = policy.get("task_type", "convert")
                 label = f"{policy['id']} ({task_type}/{policy['track']})"
                 run_tag = f" run {run_num}/{num_runs}" if num_runs > 1 else ""
-                print(f"  [{tool_name}] {label}{run_tag} ...", end=" ", flush=True)
 
                 result = _execute_job((policy, run_num))
-                all_results.append(result)
+                tool_results.append(result)
 
                 status = "PASS" if result.get("success") else "FAIL"
-                print(status)
+                lines.append(f"  [{tool_name}] {label}{run_tag} ... {status}")
 
                 run_id = result.get("run_id", f"run_{tool_name}_{policy['id']}")
                 out_json = results_dir / f"{run_id}.json"
                 out_json.write_text(json.dumps(result, indent=2), encoding="utf-8")
         else:
-            # Parallel execution
             completed = 0
             total = len(jobs)
             with ThreadPoolExecutor(max_workers=num_workers) as pool:
@@ -470,14 +459,30 @@ def main() -> int:
                     run_tag = f" r{run_num}" if num_runs > 1 else ""
 
                     result = future.result()
-                    all_results.append(result)
+                    tool_results.append(result)
 
                     status = "PASS" if result.get("success") else "FAIL"
-                    print(f"  [{completed}/{total}] [{tool_name}] {label}{run_tag} ... {status}")
+                    lines.append(f"  [{completed}/{total}] [{tool_name}] {label}{run_tag} ... {status}")
 
                     run_id = result.get("run_id", f"run_{tool_name}_{policy['id']}")
                     out_json = results_dir / f"{run_id}.json"
                     out_json.write_text(json.dumps(result, indent=2), encoding="utf-8")
+
+        return tool_results, lines
+
+    # Run all tools in parallel — each tool gets its own thread.
+    # Output is buffered per tool and printed in order after all finish.
+    if len(tools_to_run) > 1:
+        with ThreadPoolExecutor(max_workers=len(tools_to_run)) as tool_pool:
+            tool_futures = {t: tool_pool.submit(_run_tool, t) for t in tools_to_run}
+        for tool_name in tools_to_run:
+            results, lines = tool_futures[tool_name].result()
+            print("\n".join(lines))
+            all_results.extend(results)
+    else:
+        results, lines = _run_tool(tools_to_run[0])
+        print("\n".join(lines))
+        all_results.extend(results)
 
     _print_summary(all_results)
 

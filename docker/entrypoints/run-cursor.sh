@@ -23,7 +23,7 @@ export PATH="$HOME/.local/bin:$HOME/.cursor/bin:$PATH"
 
 cd /workspace
 
-timeout "$TIMEOUT" cursor-agent -p --force \
+timeout "$TIMEOUT" cursor-agent --api-key "$CURSOR_API_KEY" -p --force \
   --output-format json \
   --model "${CURSOR_MODEL:-claude-4.6-sonnet-medium}" \
   "$PROMPT" || {

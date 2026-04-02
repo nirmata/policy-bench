@@ -34,5 +34,4 @@ docker/secrets/
 dataset/.cache/
 dataset/imported/**
 !dataset/imported/README.md
-!dataset/imported/.gitkeep
 !dataset/imported/upstream-meta.json

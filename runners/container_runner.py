@@ -37,6 +37,7 @@ _IMAGES = {
     "nctl": "benchmark-nctl",
     "claude": "benchmark-claude",
     "cursor": "benchmark-cursor",
+    "codex": "benchmark-codex",
 }
 
 _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")

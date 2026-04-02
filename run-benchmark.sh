@@ -163,7 +163,7 @@ build_docker_images() {
   fi
 
   local needs_build=false
-  for img in benchmark-base benchmark-nctl benchmark-claude benchmark-cursor; do
+  for img in benchmark-base benchmark-nctl benchmark-claude benchmark-cursor benchmark-codex; do
     if ! docker image inspect "$img" >/dev/null 2>&1; then
       needs_build=true
       break
@@ -183,6 +183,7 @@ build_docker_images() {
     docker build -f Dockerfile.nctl -t benchmark-nctl --build-arg NCTL_BIN=nctl . 2>&1 | tail -3
     docker build -f Dockerfile.claude -t benchmark-claude . 2>&1 | tail -3
     docker build -f Dockerfile.cursor -t benchmark-cursor . 2>&1 | tail -3
+    docker build -f Dockerfile.codex -t benchmark-codex . 2>&1 | tail -3
   )
   info "Docker images built."
 }

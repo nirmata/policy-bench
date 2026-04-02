@@ -42,6 +42,10 @@ if [ -z "$ONLY" ] || [ "$ONLY" = "cursor" ]; then
   build_tool cursor
 fi
 
+if [ -z "$ONLY" ] || [ "$ONLY" = "codex" ]; then
+  build_tool codex
+fi
+
 echo ""
 echo "Done. Images:"
 docker images --format '  {{.Repository}}:{{.Tag}}  {{.Size}}' | grep benchmark

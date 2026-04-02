@@ -14,7 +14,11 @@ tools:
     type: cli
     command: "cursor -p"
     enabled: true
-    # Priority: cursor CLI (--force) > manual (poll for output file)
+  codex:
+    type: cli
+    command: "codex exec"
+    api_key_env: "CODEX_API_KEY"
+    enabled: true
 
 # Tracks define the conversion source format → target mapping.
 # The expected_output_kind per policy in index.yaml can override the default.

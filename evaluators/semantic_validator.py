@@ -90,13 +90,27 @@ def run_kyverno_test(
                     if policy_under_test is not None:
                         doc["policies"] = [str(policy_under_test.resolve())]
                     if "results" in doc:
+                        is_new_kind = output_policy_kind in _NEW_POLICY_KINDS
+                        seen: dict[tuple, dict] = {}
                         for r in doc["results"]:
                             if not isinstance(r, dict):
                                 continue
                             if output_policy_name and "policy" in r:
                                 r["policy"] = output_policy_name
-                            if output_policy_kind in _NEW_POLICY_KINDS:
+                            if is_new_kind:
                                 r.pop("rule", None)
+                                # Merge duplicates by resource -- new policy
+                                # types evaluate all validations as a group,
+                                # so ANY fail = overall fail.
+                                res = r.get("resources") or [None]
+                                key = (r.get("kind"), r.get("policy"), res[0])
+                                if key in seen:
+                                    if r.get("result") == "fail":
+                                        seen[key]["result"] = "fail"
+                                else:
+                                    seen[key] = r
+                        if is_new_kind:
+                            doc["results"] = list(seen.values())
                 (cleanup_dir / "kyverno-test.yaml").write_text(
                     yaml.dump(doc, default_flow_style=False, sort_keys=False),
                     encoding="utf-8",

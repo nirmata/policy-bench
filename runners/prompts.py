@@ -13,41 +13,46 @@ from __future__ import annotations
 # Conversion prompts (source → target)
 # ---------------------------------------------------------------------------
 
-# Maps (track, output_kind) → template.  Falls back to (track, None) when the
-# output kind is not explicitly listed, which matches the original behavior.
-
 _CONVERSION_PROMPTS: dict[tuple[str, str | None], str] = {
     ("cluster-policy", "ValidatingPolicy"): (
         "Convert the Kyverno ClusterPolicy in {input_path} to a "
-        "ValidatingPolicy. Write the converted policy to {output_path}."
+        "ValidatingPolicy.{description_clause} Write the converted policy "
+        "to {output_path}."
     ),
     ("cluster-policy", "MutatingPolicy"): (
         "Convert the Kyverno ClusterPolicy in {input_path} to a "
-        "MutatingPolicy. Write the converted policy to {output_path}."
+        "MutatingPolicy.{description_clause} Write the converted policy "
+        "to {output_path}."
     ),
     ("cluster-policy", "GeneratingPolicy"): (
         "Convert the Kyverno ClusterPolicy in {input_path} to a "
-        "GeneratingPolicy. Write the converted policy to {output_path}."
+        "GeneratingPolicy.{description_clause} Write the converted policy "
+        "to {output_path}."
     ),
     ("cluster-policy", "ImageValidatingPolicy"): (
         "Convert the Kyverno ClusterPolicy in {input_path} to an "
-        "ImageValidatingPolicy. Write the converted policy to {output_path}."
+        "ImageValidatingPolicy.{description_clause} Write the converted policy "
+        "to {output_path}."
     ),
     ("gatekeeper", None): (
         "Convert the Gatekeeper policy in {input_path} to a Kyverno "
-        "ValidatingPolicy. Write the converted policy to {output_path}."
+        "ValidatingPolicy.{description_clause} Write the converted policy "
+        "to {output_path}."
     ),
     ("opa", None): (
         "Convert the OPA/Rego policy in {input_path} to a Kyverno "
-        "ValidatingPolicy. Write the converted policy to {output_path}."
+        "ValidatingPolicy.{description_clause} Write the converted policy "
+        "to {output_path}."
     ),
     ("sentinel", None): (
         "Convert the HashiCorp Sentinel policy in {input_path} to a Kyverno "
-        "ValidatingPolicy. Write the converted policy to {output_path}."
+        "ValidatingPolicy.{description_clause} Write the converted policy "
+        "to {output_path}."
     ),
     ("cleanup", None): (
         "Convert the Kyverno CleanupPolicy in {input_path} to a "
-        "DeletingPolicy. Write the converted policy to {output_path}."
+        "DeletingPolicy.{description_clause} Write the converted policy "
+        "to {output_path}."
     ),
 }
 
@@ -99,4 +104,13 @@ def build_prompt(
         template = PROMPTS.get(track)
     if template is None:
         raise ValueError(f"Unknown track {track!r}. Known tracks: {sorted(PROMPTS)}")
-    return template.format(input_path=input_path, output_path=output_path)
+
+    description_clause = ""
+    if description:
+        description_clause = f" The policy {description}."
+
+    return template.format(
+        input_path=input_path,
+        output_path=output_path,
+        description_clause=description_clause,
+    )

@@ -1,285 +1,275 @@
-# Benchmark dataset — 30 curated tasks, all with upstream kyverno functional tests.
-# Every task has a kyverno_test_dir so functional testing is never skipped.
-#
-# ClusterPolicy sources: vendored from github.com/kyverno/policies (pinned manifest).
-# Run:  python3 scripts/sync_kyverno_policies.py
-# See: dataset/imported/README.md
-
 policies:
-
-  # =====================================================================
-  # ValidatingPolicy (18 tasks)
-  # =====================================================================
-
-  # --- Easy (6) ---
-  - id: cp_require_labels
-    track: cluster-policy
-    task_type: convert
-    difficulty: easy
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_require_labels.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_require_labels
-
-  - id: cp_require_resource_limits
-    track: cluster-policy
-    task_type: convert
-    difficulty: easy
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_require_resource_limits.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_require_resource_limits
-
-  - id: cp_restrict_image_registries
-    track: cluster-policy
-    task_type: convert
-    difficulty: easy
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_restrict_image_registries.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_restrict_image_registries
-
-  - id: cp_require_ro_rootfs
-    track: cluster-policy
-    task_type: convert
-    difficulty: easy
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_require_ro_rootfs.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_require_ro_rootfs
-
-  - id: cp_restrict_nodeport
-    track: cluster-policy
-    task_type: convert
-    difficulty: easy
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_restrict_nodeport.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_restrict_nodeport
-
-  - id: cp_disallow_latest_tag
-    track: cluster-policy
-    task_type: convert
-    difficulty: easy
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_disallow_latest_tag.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_disallow_latest_tag
-
-  # --- Medium (6) ---
-  - id: cp_disallow_default_namespace
-    track: cluster-policy
-    task_type: convert
-    difficulty: medium
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_disallow_default_namespace.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_disallow_default_namespace
-
-  - id: cp_require_drop_all
-    track: cluster-policy
-    task_type: convert
-    difficulty: medium
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_require_drop_all.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_require_drop_all
-
-  - id: cp_restrict_capabilities
-    track: cluster-policy
-    task_type: convert
-    difficulty: medium
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_restrict_capabilities.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_restrict_capabilities
-
-  - id: cp_require_probes
-    track: cluster-policy
-    task_type: convert
-    difficulty: medium
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_require_probes.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_require_probes
-
-  - id: cp_disallow_privileged
-    track: cluster-policy
-    task_type: convert
-    difficulty: medium
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_disallow_privileged.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_disallow_privileged
-
-  - id: cp_disallow_host_namespaces
-    track: cluster-policy
-    task_type: convert
-    difficulty: medium
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_disallow_host_namespaces.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_disallow_host_namespaces
-
-  # --- Hard (6) ---
-  - id: cp_disallow_cri_sock_mount
-    track: cluster-policy
-    task_type: convert
-    difficulty: hard
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_disallow_cri_sock_mount.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_disallow_cri_sock_mount
-
-  - id: cp_enforce_resources_as_ratio
-    track: cluster-policy
-    task_type: convert
-    difficulty: hard
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_enforce_resources_as_ratio.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_enforce_resources_as_ratio
-
-  - id: cp_restrict_ingress_host
-    track: cluster-policy
-    task_type: convert
-    difficulty: hard
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_restrict_ingress_host.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_restrict_ingress_host
-
-  - id: cp_require_pdb
-    track: cluster-policy
-    task_type: convert
-    difficulty: hard
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_require_pdb.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_require_pdb
-
-  - id: cp_pdb_minavailable
-    track: cluster-policy
-    task_type: convert
-    difficulty: hard
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_pdb_minavailable.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_pdb_minavailable
-
-  - id: cp_block_stale_images
-    track: cluster-policy
-    task_type: convert
-    difficulty: hard
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_block_stale_images.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_block_stale_images
-
-  - id: cp_check_nvidia_gpu
-    track: cluster-policy
-    task_type: convert
-    difficulty: hard
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_check_nvidia_gpu.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_check_nvidia_gpu
-
-  - id: cp_limit_configmap_for_sa
-    track: cluster-policy
-    task_type: convert
-    difficulty: hard
-    expected_output_kind: ValidatingPolicy
-    path: imported/kyverno-policies/cp_limit_configmap_for_sa.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_limit_configmap_for_sa
-
-  # =====================================================================
-  # MutatingPolicy (8 tasks)
-  # =====================================================================
-
-  # --- Easy (3) ---
-  - id: cp_add_default_labels
-    track: cluster-policy
-    task_type: convert
-    difficulty: easy
-    expected_output_kind: MutatingPolicy
-    path: imported/kyverno-policies/cp_add_default_labels.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_add_default_labels
-
-  - id: cp_add_safe_to_evict
-    track: cluster-policy
-    task_type: convert
-    difficulty: easy
-    expected_output_kind: MutatingPolicy
-    path: imported/kyverno-policies/cp_add_safe_to_evict.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_add_safe_to_evict
-
-  - id: cp_add_default_resources
-    track: cluster-policy
-    task_type: convert
-    difficulty: easy
-    expected_output_kind: MutatingPolicy
-    path: imported/kyverno-policies/cp_add_default_resources.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_add_default_resources
-
-  # --- Medium (3) ---
-  - id: cp_add_tolerations
-    track: cluster-policy
-    task_type: convert
-    difficulty: medium
-    expected_output_kind: MutatingPolicy
-    path: imported/kyverno-policies/cp_add_tolerations.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_add_tolerations
-
-  - id: cp_add_ndots
-    track: cluster-policy
-    task_type: convert
-    difficulty: medium
-    expected_output_kind: MutatingPolicy
-    path: imported/kyverno-policies/cp_add_ndots.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_add_ndots
-
-  - id: cp_always_pull_images
-    track: cluster-policy
-    task_type: convert
-    difficulty: medium
-    expected_output_kind: MutatingPolicy
-    path: imported/kyverno-policies/cp_always_pull_images.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_always_pull_images
-
-  # --- Hard (2) ---
-  - id: cp_add_securitycontext
-    track: cluster-policy
-    task_type: convert
-    difficulty: hard
-    expected_output_kind: MutatingPolicy
-    path: imported/kyverno-policies/cp_add_securitycontext.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_add_securitycontext
-
-  - id: cp_inject_sidecar
-    track: cluster-policy
-    task_type: convert
-    difficulty: hard
-    expected_output_kind: MutatingPolicy
-    path: imported/kyverno-policies/cp_inject_sidecar.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_inject_sidecar
-
-  # =====================================================================
-  # GeneratingPolicy (4 tasks)
-  # =====================================================================
-
-  # --- Easy (1) ---
-  - id: cp_add_ns_quota
-    track: cluster-policy
-    task_type: convert
-    difficulty: easy
-    expected_output_kind: GeneratingPolicy
-    path: imported/kyverno-policies/cp_add_ns_quota.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_add_ns_quota
-
-  # --- Medium (2) ---
-  - id: cp_create_default_pdb
-    track: cluster-policy
-    task_type: convert
-    difficulty: medium
-    expected_output_kind: GeneratingPolicy
-    path: imported/kyverno-policies/cp_create_default_pdb.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_create_default_pdb
-
-  - id: cp_kasten_generate_backup
-    track: cluster-policy
-    task_type: convert
-    difficulty: medium
-    expected_output_kind: GeneratingPolicy
-    path: imported/kyverno-policies/cp_kasten_generate_backup.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_kasten_generate_backup
-
-  # --- Hard (1) ---
-  - id: cp_kasten_generate_by_label
-    track: cluster-policy
-    task_type: convert
-    difficulty: hard
-    expected_output_kind: GeneratingPolicy
-    path: imported/kyverno-policies/cp_kasten_generate_by_label.yaml
-    kyverno_test_dir: imported/kyverno-tests/cp_kasten_generate_by_label
+- id: cp_require_labels
+  track: cluster-policy
+  task_type: convert
+  difficulty: easy
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_require_labels.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_require_labels
+  description: define and use labels that identify semantic attributes of your application or Deployment
+- id: cp_require_resource_limits
+  track: cluster-policy
+  task_type: convert
+  difficulty: easy
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_require_resource_limits.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_require_resource_limits
+  description: as application workloads share cluster resources, it is important to limit resources requested and consumed
+    by each Pod
+- id: cp_restrict_image_registries
+  track: cluster-policy
+  task_type: convert
+  difficulty: easy
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_restrict_image_registries.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_restrict_image_registries
+  description: images from unknown, public registries can be of dubious quality and may not be scanned and secured, representing
+    a high degree of risk
+- id: cp_require_ro_rootfs
+  track: cluster-policy
+  task_type: convert
+  difficulty: easy
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_require_ro_rootfs.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_require_ro_rootfs
+  description: a read-only root file system helps to enforce an immutable infrastructure strategy; the container only needs
+    to write on the mounted volume that persists the state
+- id: cp_restrict_nodeport
+  track: cluster-policy
+  task_type: convert
+  difficulty: easy
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_restrict_nodeport.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_restrict_nodeport
+  description: a Kubernetes Service of type NodePort uses a host port to receive traffic from any source
+- id: cp_disallow_latest_tag
+  track: cluster-policy
+  task_type: convert
+  difficulty: easy
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_disallow_latest_tag.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_disallow_latest_tag
+  description: the ':latest' tag is mutable and can lead to unexpected errors if the image changes
+- id: cp_disallow_default_namespace
+  track: cluster-policy
+  task_type: convert
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_disallow_default_namespace.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_disallow_default_namespace
+  description: kubernetes Namespaces are an optional feature that provide a way to segment and isolate cluster resources across
+    multiple applications and users
+- id: cp_require_drop_all
+  track: cluster-policy
+  task_type: convert
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_require_drop_all.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_require_drop_all
+  description: capabilities permit privileged actions without giving full root access
+- id: cp_restrict_capabilities
+  track: cluster-policy
+  task_type: convert
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_restrict_capabilities.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_restrict_capabilities
+  description: adding capabilities is a way for containers in a Pod to request higher levels of ability than those with which
+    they may be provisioned
+- id: cp_require_probes
+  track: cluster-policy
+  task_type: convert
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_require_probes.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_require_probes
+  description: liveness and readiness probes need to be configured to correctly manage a Pod's lifecycle during deployments,
+    restarts, and upgrades
+- id: cp_disallow_privileged
+  track: cluster-policy
+  task_type: convert
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_disallow_privileged.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_disallow_privileged
+  description: privileged mode disables most security mechanisms and must not be allowed
+- id: cp_disallow_host_namespaces
+  track: cluster-policy
+  task_type: convert
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_disallow_host_namespaces.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_disallow_host_namespaces
+  description: host namespaces (Process ID namespace, Inter-Process Communication namespace, and network namespace) allow
+    access to shared information and can be used to elevate privileges
+- id: cp_disallow_cri_sock_mount
+  track: cluster-policy
+  task_type: convert
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_disallow_cri_sock_mount.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_disallow_cri_sock_mount
+  description: container daemon socket bind mounts allows access to the container engine on the node
+- id: cp_enforce_resources_as_ratio
+  track: cluster-policy
+  task_type: convert
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_enforce_resources_as_ratio.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_enforce_resources_as_ratio
+  description: resource requests often need to be tailored to the type of workload in the container/Pod
+- id: cp_restrict_ingress_host
+  track: cluster-policy
+  task_type: convert
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_restrict_ingress_host.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_restrict_ingress_host
+  description: an Ingress host is a URL at which services may be made available externally
+- id: cp_require_pdb
+  track: cluster-policy
+  task_type: convert
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_require_pdb.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_require_pdb
+  description: podDisruptionBudget resources are useful to ensuring minimum availability is maintained at all times
+- id: cp_pdb_minavailable
+  track: cluster-policy
+  task_type: convert
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_pdb_minavailable.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_pdb_minavailable
+  description: when a Pod controller which can run multiple replicas is subject to an active PodDisruptionBudget, if the replicas
+    field has a value equal to the minAvailable value of the PodDisruptionBudget it may prevent voluntary disruptions including
+    Node drains which may impact routine maintenance tasks and disrupt operations
+- id: cp_block_stale_images
+  track: cluster-policy
+  task_type: convert
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_block_stale_images.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_block_stale_images
+  description: images that are old usually have some open security vulnerabilities which are not patched
+- id: cp_check_nvidia_gpu
+  track: cluster-policy
+  task_type: convert
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_check_nvidia_gpu.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_check_nvidia_gpu
+  description: containers which request use of an NVIDIA GPU often need to be authored to consume them via a CUDA environment
+    variable called NVIDIA_VISIBLE_DEVICES
+- id: cp_limit_configmap_for_sa
+  track: cluster-policy
+  task_type: convert
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_limit_configmap_for_sa.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_limit_configmap_for_sa
+  description: this policy shows how to restrict certain operations on specific ConfigMaps by ServiceAccounts
+- id: cp_add_default_labels
+  track: cluster-policy
+  task_type: convert
+  difficulty: easy
+  expected_output_kind: MutatingPolicy
+  path: imported/kyverno-policies/cp_add_default_labels.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_add_default_labels
+  description: labels are used as an important source of metadata describing objects in various ways or triggering other functionality
+- id: cp_add_safe_to_evict
+  track: cluster-policy
+  task_type: convert
+  difficulty: easy
+  expected_output_kind: MutatingPolicy
+  path: imported/kyverno-policies/cp_add_safe_to_evict.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_add_safe_to_evict
+  description: the Kubernetes cluster autoscaler does not evict pods that  use hostPath or emptyDir volumes
+- id: cp_add_default_resources
+  track: cluster-policy
+  task_type: convert
+  difficulty: easy
+  expected_output_kind: MutatingPolicy
+  path: imported/kyverno-policies/cp_add_default_resources.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_add_default_resources
+  description: pods which don't specify at least resource requests are assigned a QoS class of BestEffort which can hog resources
+    for other Pods on Nodes
+- id: cp_add_tolerations
+  track: cluster-policy
+  task_type: convert
+  difficulty: medium
+  expected_output_kind: MutatingPolicy
+  path: imported/kyverno-policies/cp_add_tolerations.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_add_tolerations
+  description: pod tolerations are used to schedule on Nodes which have a matching taint
+- id: cp_add_ndots
+  track: cluster-policy
+  task_type: convert
+  difficulty: medium
+  expected_output_kind: MutatingPolicy
+  path: imported/kyverno-policies/cp_add_ndots.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_add_ndots
+  description: the ndots value controls where DNS lookups are first performed in a cluster and needs to be set to a lower
+    value than the default of 5 in some cases
+- id: cp_always_pull_images
+  track: cluster-policy
+  task_type: convert
+  difficulty: medium
+  expected_output_kind: MutatingPolicy
+  path: imported/kyverno-policies/cp_always_pull_images.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_always_pull_images
+  description: by default, images that have already been pulled can be accessed by other Pods without re-pulling them if the
+    name and tag are known
+- id: cp_add_securitycontext
+  track: cluster-policy
+  task_type: convert
+  difficulty: hard
+  expected_output_kind: MutatingPolicy
+  path: imported/kyverno-policies/cp_add_securitycontext.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_add_securitycontext
+  description: a Pod securityContext entry defines fields such as the user and group which should be used to run the Pod
+- id: cp_inject_sidecar
+  track: cluster-policy
+  task_type: convert
+  difficulty: hard
+  expected_output_kind: MutatingPolicy
+  path: imported/kyverno-policies/cp_inject_sidecar.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_inject_sidecar
+  description: the sidecar pattern is very common in Kubernetes whereby other applications can insert components via tacit
+    modification of a submitted resource
+- id: cp_add_ns_quota
+  track: cluster-policy
+  task_type: convert
+  difficulty: easy
+  expected_output_kind: GeneratingPolicy
+  path: imported/kyverno-policies/cp_add_ns_quota.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_add_ns_quota
+  description: to better control the number of resources that can be created in a given Namespace and provide default resource
+    consumption limits for Pods, ResourceQuota and LimitRange resources are recommended
+- id: cp_create_default_pdb
+  track: cluster-policy
+  task_type: convert
+  difficulty: medium
+  expected_output_kind: GeneratingPolicy
+  path: imported/kyverno-policies/cp_create_default_pdb.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_create_default_pdb
+  description: a PodDisruptionBudget limits the number of Pods of a replicated application that are down simultaneously from
+    voluntary disruptions
+- id: cp_kasten_generate_backup
+  track: cluster-policy
+  task_type: convert
+  difficulty: medium
+  expected_output_kind: GeneratingPolicy
+  path: imported/kyverno-policies/cp_kasten_generate_backup.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_kasten_generate_backup
+  description: generates a Kasten policy for a namespace that includes any Deployment or StatefulSet with a "dataprotection=kasten-example"
+    label, if the policy does not already exist
+- id: cp_kasten_generate_by_label
+  track: cluster-policy
+  task_type: convert
+  difficulty: hard
+  expected_output_kind: GeneratingPolicy
+  path: imported/kyverno-policies/cp_kasten_generate_by_label.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_kasten_generate_by_label
+  description: generates a Kasten policy for a new namespace that includes a valid "dataprotection" label, if the policy does
+    not already exist

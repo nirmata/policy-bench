@@ -302,9 +302,12 @@ def _print_summary(results: list[dict]) -> None:
         else:
             sem_str = "PASS" if sem else "FAIL"
 
+        lint_warns = r.get("lint_warnings") or []
+        lint_tag = f"  WARN: {lint_warns[0][:60]}" if lint_warns else ""
+
         print(
             f"  {r['tool']:<10} {r['policy_id']:<35} {task_type:<9} {kind_short:<20} "
-            f"{s_str:>11} {sem_str:>11} {time_str:>8}"
+            f"{s_str:>11} {sem_str:>11} {time_str:>8}{lint_tag}"
         )
 
         schema_total += 1
@@ -465,6 +468,13 @@ def main() -> int:
     agg_path = results_dir / f"benchmark_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
     agg_path.write_text(json.dumps(all_results, indent=2), encoding="utf-8")
     print(f"  Aggregated results: {agg_path}")
+
+    # Regenerate dashboard from all results
+    try:
+        from reports.generate import generate_all
+        generate_all()
+    except Exception as exc:
+        print(f"  Warning: dashboard update failed: {exc}", file=sys.stderr)
 
     return 0
 

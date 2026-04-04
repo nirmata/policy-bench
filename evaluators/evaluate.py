@@ -19,6 +19,7 @@ except ImportError:
 from .go_validator import validate_with_go
 from .schema_validator import validate_schema
 from .semantic_validator import run_kyverno_test
+from .structural_lint import lint as structural_lint
 from .input_validators import (
     cluster_policy,
     gatekeeper,
@@ -87,6 +88,11 @@ def evaluate(
         )
     result["schema_pass"] = schema_pass
     result["schema_errors"] = schema_errors
+
+    # --- Structural lint (between schema and functional test) ---
+    lint_pass, lint_warnings = structural_lint(output_path)
+    result["lint_pass"] = lint_pass
+    result["lint_warnings"] = lint_warnings
 
     # --- Functional test (kyverno test) ---
     semantic_pass = None

@@ -16,6 +16,7 @@ import json as _json
 import os
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -144,8 +145,8 @@ class ClaudeRunner(ToolRunner):
             if output_path.exists():
                 try:
                     out_text = output_path.read_text(encoding="utf-8")
-                except Exception:
-                    pass
+                except (OSError, UnicodeDecodeError) as exc:
+                    print(f"  Warning: could not read output file: {exc}", file=sys.stderr)
             output_tokens = estimate_tokens(out_text)
             tokens_estimated = True
         if cost is None:

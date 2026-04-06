@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -153,8 +154,8 @@ class ContainerRunner(ToolRunner):
         if has_output:
             try:
                 out_text = container_output.read_text(encoding="utf-8")
-            except Exception:
-                pass
+            except (OSError, UnicodeDecodeError) as exc:
+                print(f"  Warning: could not read container output: {exc}", file=sys.stderr)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(container_output, output_path)
 

@@ -179,6 +179,7 @@ def _run_single(
     timeout = eval_config.get("timeout_seconds", 120)
     expected_kind = policy.get("expected_output_kind")
     last_result: dict = {}
+    base_prompt: str | None = None
 
     for attempt in range(1, max_attempts + 1):
         # Per-task prompt override takes precedence over template
@@ -197,7 +198,13 @@ def _run_single(
                 description=policy.get("description"),
             )
 
-        # Augment prompt on retry with previous errors
+        # Save base prompt on first attempt; reset on each retry
+        if base_prompt is None:
+            base_prompt = prompt
+        else:
+            prompt = base_prompt
+
+        # Augment prompt on retry with previous errors (only latest attempt)
         if attempt > 1 and last_result.get("schema_errors"):
             prev_errs = last_result.get("schema_errors", [])
             prompt += (
@@ -232,6 +239,14 @@ def _run_single(
                 task_type=task_type,
             )
 
+        # If tool failed to produce output but a functional test exists,
+        # mark functional as failed (not skipped) — no output is worse than
+        # wrong output and should count against the tool's score.
+        if not eval_result and kyverno_test_dir:
+            eval_result["semantic_pass"] = False
+            eval_result["semantic_skipped"] = False
+            eval_result["semantic_errors"] = ["No output produced by tool"]
+
         # Success = tool ran + schema/CEL pass + functional pass (or skipped)
         schema_ok = eval_result.get("schema_pass", False)
         semantic = eval_result.get("semantic_pass")
@@ -241,7 +256,7 @@ def _run_single(
 
         timestamp_str = datetime.now(timezone.utc).isoformat()
         last_result = {
-            "run_id": f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{tool_name}_{policy_id}",
+            "run_id": f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S_%f')}_{tool_name}_{policy_id}",
             "tool": tool_name,
             "policy_id": policy_id,
             "track": track,
@@ -436,7 +451,18 @@ def main() -> int:
                     task_type = policy.get("task_type", "convert")
                     label = f"{policy['id']} ({task_type}/{policy['track']})"
 
-                    result = future.result()
+                    try:
+                        result = future.result()
+                    except Exception as exc:
+                        result = {
+                            "tool": tool_name,
+                            "policy_id": policy["id"],
+                            "track": policy.get("track", "unknown"),
+                            "task_type": policy.get("task_type", "convert"),
+                            "success": False,
+                            "error": f"Unexpected worker error: {exc}",
+                            "run_id": f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S_%f')}_{tool_name}_{policy['id']}",
+                        }
                     tool_results.append(result)
 
                     status = "PASS" if result.get("success") else "FAIL"

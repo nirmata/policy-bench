@@ -53,9 +53,7 @@ class CursorRunner(ToolRunner):
     name = "cursor"
 
     def is_available(self) -> bool:
-        if shutil.which("cursor"):
-            return True
-        return True  # manual fallback is always available
+        return bool(shutil.which("cursor"))
 
     # ------------------------------------------------------------------
     # Primary: Cursor CLI agent mode  (cursor -p "..." --force)
@@ -139,8 +137,8 @@ class CursorRunner(ToolRunner):
         if output_path.exists():
             try:
                 output_file_text = output_path.read_text(encoding="utf-8")
-            except Exception:
-                pass
+            except (OSError, UnicodeDecodeError) as exc:
+                print(f"  Warning: could not read output file: {exc}", file=sys.stderr)
         output_tokens = real_output_tokens or estimate_tokens(output_file_text)
 
         # --- step 5: compute cost ---

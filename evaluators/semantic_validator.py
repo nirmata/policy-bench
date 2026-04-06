@@ -116,10 +116,14 @@ def run_kyverno_test(
                     encoding="utf-8",
                 )
                 run_dir = cleanup_dir
-        except Exception:
+        except (yaml.YAMLError, FileNotFoundError, KeyError, shutil.Error, OSError) as exc:
             if cleanup_dir and cleanup_dir.exists():
                 shutil.rmtree(cleanup_dir, ignore_errors=True)
-            cleanup_dir = None
+            return (
+                False,
+                [f"Test manifest patching failed: {exc}"],
+                False,
+            )
 
     try:
         proc = subprocess.run(

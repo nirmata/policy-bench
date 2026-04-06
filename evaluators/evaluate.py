@@ -57,18 +57,20 @@ def evaluate(
 ) -> dict:
     """Run evaluation and return a results dict.
 
-    Two layers:
+    Three layers:
       1. Schema + CEL (Go validator preferred, Python fallback)
-      2. Functional test (kyverno test with real resources)
+      2. Structural lint (catches common MutatingPolicy issues)
+      3. Functional test (kyverno test with real resources)
 
-    Keys: schema_pass, schema_errors, semantic_pass, semantic_errors,
-          semantic_skipped.
+    Keys: schema_pass, schema_errors, lint_pass, lint_warnings,
+          semantic_pass, semantic_errors, semantic_skipped, validator_used.
     """
     result: dict = {}
 
     # --- Schema + CEL (Go validator preferred, Python fallback) ---
     go_result = validate_with_go(output_path)
     if go_result is not None:
+        result["validator_used"] = go_result.get("validator_used", "go")
         schema_pass = go_result["schema_pass"] and go_result["cel_pass"]
         schema_errors = list(go_result.get("errors", []))
 
@@ -83,6 +85,7 @@ def evaluate(
                     f"Expected kind {sorted(allowed)}, got {actual_kind!r}"
                 )
     else:
+        result["validator_used"] = "python_fallback"
         schema_pass, schema_errors = validate_schema(
             output_path, expected_kind=expected_output_kind
         )

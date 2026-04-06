@@ -30,8 +30,8 @@ def lint(output_path: Path) -> tuple[bool, list[str]]:
 
     try:
         doc = yaml.safe_load(output_path.read_text(encoding="utf-8")) or {}
-    except Exception:
-        return True, []  # schema validator handles parse failures
+    except (yaml.YAMLError, OSError) as exc:
+        return True, [f"Lint skipped: could not parse YAML ({exc})"]
 
     kind = doc.get("kind", "")
     spec = doc.get("spec") or {}

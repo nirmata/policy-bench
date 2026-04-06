@@ -73,8 +73,6 @@ def _deduplicate_runs(results: list[dict]) -> list[dict]:
     (e.g. ``run_*`` files sort after ``benchmark_*`` files even if older).
     Falls back to load order when timestamp is absent.
     """
-    from collections import defaultdict
-
     groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for r in results:
         key = (r.get("tool", ""), r.get("policy_id", ""))
@@ -270,8 +268,13 @@ def generate_html(
     )
 
 
-def generate_all(config: dict | None = None, include_files: list[str] | None = None) -> None:
-    """Load results, generate reports, write to reports/output/."""
+def _build_report_data(
+    config: dict | None = None, include_files: list[str] | None = None
+) -> tuple[dict, list[dict], dict | None] | None:
+    """Shared pipeline: load config, load results, deduplicate, aggregate, compute leaderboard.
+
+    Returns ``(agg, leaderboard, config)`` or ``None`` when no results are found.
+    """
     if config is None and yaml:
         cfg_path = REPO_ROOT / "config.yaml"
         if cfg_path.exists():
@@ -280,12 +283,20 @@ def generate_all(config: dict | None = None, include_files: list[str] | None = N
     results = _load_results(include_files=include_files)
     if not results:
         print("No results found in results/. Run benchmark.py first.", file=sys.stderr)
-        return
+        return None
 
-    # Average multiple runs of the same (tool, policy) before aggregating
     results = _deduplicate_runs(results)
     agg = _aggregate(results)
     leaderboard = _compute_leaderboard(agg["tool_stats"], config)
+    return agg, leaderboard, config
+
+
+def generate_all(config: dict | None = None, include_files: list[str] | None = None) -> None:
+    """Load results, generate reports, write to reports/output/."""
+    data = _build_report_data(config=config, include_files=include_files)
+    if data is None:
+        return
+    agg, leaderboard, config = data
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -318,21 +329,10 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    config = None
-    if yaml:
-        cfg_path = REPO_ROOT / "config.yaml"
-        if cfg_path.exists():
-            config = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
-
-    results = _load_results(include_files=args.from_results)
-    if not results:
-        print("No results found in results/. Run benchmark.py first.", file=sys.stderr)
+    data = _build_report_data(include_files=args.from_results)
+    if data is None:
         return 1
-
-    # Average multiple runs of the same (tool, policy) before aggregating
-    results = _deduplicate_runs(results)
-    agg = _aggregate(results)
-    leaderboard = _compute_leaderboard(agg["tool_stats"], config)
+    agg, leaderboard, config = data
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 

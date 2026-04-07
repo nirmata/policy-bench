@@ -14,9 +14,9 @@ output/*-vpol/
 output/*.yaml
 output/**/*.yaml
 results/*.json
+!results/benchmark_latest.json
 results/*.log
 results/policy-output-manifest-files/
-!results/examples/*.json
 
 # Report outputs (regenerated)
 reports/output/

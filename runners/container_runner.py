@@ -102,7 +102,7 @@ class ContainerRunner(ToolRunner):
             if create_proc.returncode != 0:
                 return RunResult(
                     output_path=output_path,
-                    conversion_time_seconds=0.0,
+                    conversion_time_seconds=round(time.monotonic() - start, 3),
                     success=False,
                     error=f"Failed to create container: {(create_proc.stderr or '').strip()}",
                     model=f"{self.name}-container",
@@ -112,7 +112,7 @@ class ContainerRunner(ToolRunner):
             if not container_id:
                 return RunResult(
                     output_path=output_path,
-                    conversion_time_seconds=0.0,
+                    conversion_time_seconds=round(time.monotonic() - start, 3),
                     success=False,
                     error="Failed to create container: empty container id",
                     model=f"{self.name}-container",
@@ -128,28 +128,19 @@ class ContainerRunner(ToolRunner):
                 if cp_proc.returncode != 0:
                     return RunResult(
                         output_path=output_path,
-                        conversion_time_seconds=0.0,
+                        conversion_time_seconds=round(time.monotonic() - start, 3),
                         success=False,
                         error=f"Failed to copy input policy into container: {(cp_proc.stderr or '').strip()}",
                         model=f"{self.name}-container",
                     )
 
-            try:
-                start_proc = subprocess.run(
-                    ["docker", "start", "-a", container_id],
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout_seconds,
-                )
-                elapsed = time.monotonic() - start
-            except subprocess.TimeoutExpired:
-                return RunResult(
-                    output_path=output_path,
-                    conversion_time_seconds=time.monotonic() - start,
-                    success=False,
-                    error=f"Container timed out after {timeout_seconds}s",
-                    model=f"{self.name}-container",
-                )
+            start_proc = subprocess.run(
+                ["docker", "start", "-a", container_id],
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+            )
+            elapsed = time.monotonic() - start
 
             output_path.parent.mkdir(parents=True, exist_ok=True)
             cp_out_proc = subprocess.run(
@@ -168,6 +159,8 @@ class ContainerRunner(ToolRunner):
                     out_text = output_path.read_text(encoding="utf-8")
                 except (OSError, UnicodeDecodeError) as exc:
                     print(f"  Warning: could not read container output: {exc}", file=sys.stderr)
+                    success = False
+                    error = f"Output file exists but is unreadable: {exc}"
 
             raw_stdout = start_proc.stdout or ""
             raw_stderr = start_proc.stderr or ""
@@ -198,6 +191,22 @@ class ContainerRunner(ToolRunner):
                 model=f"{self.name}-container",
                 tokens_estimated=True,
                 raw_log=raw_log[:5000] if raw_log else None,
+            )
+        except subprocess.TimeoutExpired:
+            return RunResult(
+                output_path=output_path,
+                conversion_time_seconds=time.monotonic() - start,
+                success=False,
+                error="Container operation timed out",
+                model=f"{self.name}-container",
+            )
+        except Exception as exc:
+            return RunResult(
+                output_path=output_path,
+                conversion_time_seconds=time.monotonic() - start,
+                success=False,
+                error=f"Container launch failed: {exc}",
+                model=f"{self.name}-container",
             )
         finally:
             if container_id:
@@ -232,6 +241,7 @@ class ContainerRunner(ToolRunner):
                 if key in required and value.strip():
                     found.add(key)
         except OSError:
+            print(f"  Warning: could not read {self._env_file}: {exc}", file=sys.stderr)
             return required
 
         return [k for k in required if k not in found]

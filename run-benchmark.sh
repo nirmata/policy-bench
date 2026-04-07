@@ -67,8 +67,10 @@ check_deps() {
   # Docker only needed for --containerized
   if has_flag "--containerized" "$@"; then
     check_cmd docker "Install Docker Desktop or OrbStack"
-    if ! docker run --rm --entrypoint sh benchmark-base -lc 'curl -I -m 8 https://google.com >/dev/null 2>&1' >/dev/null 2>&1; then
-      die "Docker containers do not have outbound network access. Restart Docker Desktop and verify container egress with: docker run --rm --entrypoint sh benchmark-base -lc 'curl -I -m 8 https://google.com'"
+    if docker image inspect benchmark-base >/dev/null 2>&1; then
+      if ! docker run --rm --entrypoint sh benchmark-base -lc 'curl -I -m 8 https://google.com >/dev/null 2>&1' >/dev/null 2>&1; then
+        die "Docker containers do not have outbound network access. Restart Docker Desktop and verify container egress with: docker run --rm --entrypoint sh benchmark-base -lc 'curl -I -m 8 https://google.com'"
+      fi
     fi
   fi
 

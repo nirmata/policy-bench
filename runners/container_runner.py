@@ -201,6 +201,15 @@ class ContainerRunner(ToolRunner):
             )
         finally:
             if container_id:
+                try:
+                    subprocess.run(
+                        ["docker", "rm", "-f", container_id],
+                        capture_output=True,
+                        timeout=10,
+                    )
+                except Exception:
+                    pass  # best-effort cleanup
+            if container_id:
                 subprocess.run(
                     ["docker", "rm", "-f", container_id],
                     capture_output=True,

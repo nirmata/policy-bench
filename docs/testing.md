@@ -40,7 +40,7 @@ python3 validate.py --input input/policy.yaml --output output/converted.yaml --t
 
 ### Regenerate the dashboard from existing results
 ```bash
-./run-benchmark.sh --report
+./run-benchmark.sh --report    # must be the only argument
 ```
 
 ## Adding a New Test Case
@@ -159,7 +159,7 @@ For MutatingPolicy tests, include a `patchedResource.yaml` with the expected mut
 | Field | Required | Values |
 |-------|----------|--------|
 | `id` | yes | Unique identifier (e.g., `cp_require_labels`) |
-| `track` | yes | `cluster-policy`, `gatekeeper`, `opa`, `sentinel`, `cleanup` |
+| `track` | yes | `cluster-policy`, `gatekeeper`, `opa`, `sentinel`, `cleanup` (not all tracks have test cases yet) |
 | `task_type` | yes | `convert` or `generate` |
 | `difficulty` | yes | `easy`, `medium`, `hard` |
 | `expected_output_kind` | yes | `ValidatingPolicy`, `MutatingPolicy`, `GeneratingPolicy`, `DeletingPolicy`, `ImageValidatingPolicy` |
@@ -173,7 +173,7 @@ Each benchmark result JSON contains:
 
 | Field | Meaning |
 |-------|---------|
-| `schema_pass: true` | YAML is valid, CEL compiles |
+| `schema_pass: true` | YAML is valid and all CEL expressions compile (inspect `schema_errors` for details) |
 | `lint_pass: true` | Structural lint passed (no warnings) |
 | `lint_warnings: [...]` | Advisory warnings about common patterns (e.g., append vs prepend) |
 | `semantic_pass: true` | `kyverno test` passed — policy behaves correctly |

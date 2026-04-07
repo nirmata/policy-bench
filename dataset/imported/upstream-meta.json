@@ -2,6 +2,6 @@
   "repository": "https://github.com/kyverno/policies.git",
   "ref": "75a68932d86a67eea055089ec18311284877d296",
   "upstream_root": "policies-75a68932d86a67eea055089ec18311284877d296",
-  "policy_count": 17,
-  "tests_synced": 15
+  "policy_count": 32,
+  "tests_synced": 32
 }

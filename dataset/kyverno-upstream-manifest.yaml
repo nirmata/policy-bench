@@ -14,7 +14,11 @@ cache_dir: dataset/.cache/kyverno-policies-archive
 
 policies:
 
-  # --- ValidatingPolicy (cpol → vpol) ---
+  # =====================================================================
+  # ValidatingPolicy (cpol → vpol) — 18 tasks
+  # =====================================================================
+
+  # Easy (6)
   - id: cp_require_labels
     upstream_path: best-practices/require-labels/require-labels.yaml
     sync_test: true
@@ -35,12 +39,13 @@ policies:
     upstream_path: best-practices/restrict-node-port/restrict-node-port.yaml
     sync_test: true
 
-  - id: cp_disallow_default_namespace
-    upstream_path: best-practices/disallow-default-namespace/disallow-default-namespace.yaml
-    sync_test: true
-
   - id: cp_disallow_latest_tag
     upstream_path: best-practices/disallow-latest-tag/disallow-latest-tag.yaml
+    sync_test: true
+
+  # Medium (6)
+  - id: cp_disallow_default_namespace
+    upstream_path: best-practices/disallow-default-namespace/disallow-default-namespace.yaml
     sync_test: true
 
   - id: cp_require_drop_all
@@ -55,11 +60,52 @@ policies:
     upstream_path: best-practices/require-probes/require-probes.yaml
     sync_test: true
 
+  - id: cp_disallow_privileged
+    upstream_path: pod-security/baseline/disallow-privileged-containers/disallow-privileged-containers.yaml
+    sync_test: true
+
+  - id: cp_disallow_host_namespaces
+    upstream_path: pod-security/baseline/disallow-host-namespaces/disallow-host-namespaces.yaml
+    sync_test: true
+
+  # Hard (6)
   - id: cp_disallow_cri_sock_mount
     upstream_path: best-practices/disallow-cri-sock-mount/disallow-cri-sock-mount.yaml
     sync_test: true
 
-  # --- MutatingPolicy ---
+  - id: cp_enforce_resources_as_ratio
+    upstream_path: other/enforce-resources-as-ratio/enforce-resources-as-ratio.yaml
+    sync_test: true
+
+  - id: cp_restrict_ingress_host
+    upstream_path: other/restrict-ingress-host/restrict-ingress-host.yaml
+    sync_test: true
+
+  - id: cp_require_pdb
+    upstream_path: other/require-pdb/require-pdb.yaml
+    sync_test: true
+
+  - id: cp_pdb_minavailable
+    upstream_path: other/pdb-minavailable/pdb-minavailable.yaml
+    sync_test: true
+
+  - id: cp_block_stale_images
+    upstream_path: other/block-stale-images/block-stale-images.yaml
+    sync_test: true
+
+  - id: cp_check_nvidia_gpu
+    upstream_path: other/check-nvidia-gpu/check-nvidia-gpu.yaml
+    sync_test: true
+
+  - id: cp_limit_configmap_for_sa
+    upstream_path: other/limit-configmap-for-sa/limit-configmap-for-sa.yaml
+    sync_test: true
+
+  # =====================================================================
+  # MutatingPolicy (cpol → mpol) — 8 tasks
+  # =====================================================================
+
+  # Easy (3)
   - id: cp_add_default_labels
     upstream_path: other/add-labels/add-labels.yaml
     sync_test: true
@@ -72,55 +118,47 @@ policies:
     upstream_path: other/add-default-resources/add-default-resources.yaml
     sync_test: true
 
-  # --- GeneratingPolicy ---
-  - id: cp_add_networkpolicy_dns
-    upstream_path: best-practices/add-networkpolicy-dns/add-networkpolicy-dns.yaml
-    sync_test: false
+  # Medium (3)
+  - id: cp_add_tolerations
+    upstream_path: other/add-tolerations/add-tolerations.yaml
+    sync_test: true
 
+  - id: cp_add_ndots
+    upstream_path: other/add-ndots/add-ndots.yaml
+    sync_test: true
+
+  - id: cp_always_pull_images
+    upstream_path: other/always-pull-images/always-pull-images.yaml
+    sync_test: true
+
+  # Hard (2)
+  - id: cp_add_securitycontext
+    upstream_path: other/add-default-securitycontext/add-default-securitycontext.yaml
+    sync_test: true
+
+  - id: cp_inject_sidecar
+    upstream_path: other/inject-sidecar-deployment/inject-sidecar-deployment.yaml
+    sync_test: true
+
+  # =====================================================================
+  # GeneratingPolicy (cpol → gpol) — 4 tasks
+  # =====================================================================
+
+  # Easy (1)
   - id: cp_add_ns_quota
     upstream_path: best-practices/add-ns-quota/add-ns-quota.yaml
     sync_test: true
 
-  # --- ImageValidatingPolicy ---
-  - id: cp_verify_image_simple
-    upstream_path: other/verify-image/verify-image.yaml
-    sync_test: false
-
-  # --- Complex / hard ValidatingPolicy ---
-  - id: cp_enforce_resources_as_ratio
-    upstream_path: other/enforce-resources-as-ratio/enforce-resources-as-ratio.yaml
+  # Medium (2)
+  - id: cp_create_default_pdb
+    upstream_path: other/create-default-pdb/create-default-pdb.yaml
     sync_test: true
 
-  - id: cp_check_vpa_configuration
-    upstream_path: other/check-vpa-configuration/check-vpa-configuration.yaml
-    sync_test: false
-
-  - id: cp_block_stale_images
-    upstream_path: other/block-stale-images/block-stale-images.yaml
+  - id: cp_kasten_generate_backup
+    upstream_path: kasten/kasten-generate-example-backup-policy/kasten-generate-example-backup-policy.yaml
     sync_test: true
 
-  - id: cp_deployment_replicas_higher_than_pdb
-    upstream_path: other/deployment-replicas-higher-than-pdb/deployment-replicas-higher-than-pdb.yaml
-    sync_test: false
-
-  - id: cp_check_nvidia_gpu
-    upstream_path: other/check-nvidia-gpu/check-nvidia-gpu.yaml
+  # Hard (1)
+  - id: cp_kasten_generate_by_label
+    upstream_path: kasten/kasten-generate-policy-by-preset-label/kasten-generate-policy-by-preset-label.yaml
     sync_test: true
-
-  - id: cp_limit_configmap_for_sa
-    upstream_path: other/limit-configmap-for-sa/limit-configmap-for-sa.yaml
-    sync_test: true
-
-  - id: cp_pdb_minavailable
-    upstream_path: other/pdb-minavailable/pdb-minavailable.yaml
-    sync_test: true
-
-  # --- Complex / hard MutatingPolicy ---
-  - id: cp_add_default_securitycontext
-    upstream_path: other/add-default-securitycontext/add-default-securitycontext.yaml
-    sync_test: true
-
-  # --- Complex / hard GeneratingPolicy ---
-  - id: cp_audit_event_on_delete
-    upstream_path: other/audit-event-on-delete/audit-event-on-delete.yaml
-    sync_test: false

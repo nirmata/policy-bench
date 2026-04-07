@@ -1,0 +1,20 @@
+# Shared base image for benchmark containers.
+# debian-slim (not Alpine) — cursor-agent requires glibc.
+
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        bash \
+        curl \
+        jq \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --uid 65532 --shell /bin/bash --create-home --home-dir /home/benchmark benchmark \
+    && mkdir -p /workspace/output \
+    && chown -R benchmark:benchmark /workspace
+
+ENV HOME=/home/benchmark
+USER benchmark
+WORKDIR /workspace

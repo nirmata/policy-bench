@@ -13,64 +13,46 @@ from __future__ import annotations
 # Conversion prompts (source → target)
 # ---------------------------------------------------------------------------
 
-# Maps (track, output_kind) → template.  Falls back to (track, None) when the
-# output kind is not explicitly listed, which matches the original behavior.
-
 _CONVERSION_PROMPTS: dict[tuple[str, str | None], str] = {
-    # ClusterPolicy → ValidatingPolicy
     ("cluster-policy", "ValidatingPolicy"): (
-        "Convert the Kyverno ClusterPolicy in {input_path} to a Kyverno "
-        "ValidatingPolicy (apiVersion: policies.kyverno.io/v1alpha2, Kyverno 1.16+) "
-        "using CEL-based validation where appropriate. Write the converted policy "
+        "Convert the Kyverno ClusterPolicy in {input_path} to a "
+        "ValidatingPolicy.{description_clause} Write the converted policy "
         "to {output_path}."
     ),
-    # ClusterPolicy → MutatingPolicy
     ("cluster-policy", "MutatingPolicy"): (
-        "Convert the Kyverno ClusterPolicy (mutate) in {input_path} to a Kyverno "
-        "MutatingPolicy (apiVersion: policies.kyverno.io/v1alpha2, Kyverno 1.16+). "
-        "Preserve the mutation logic using CEL expressions where appropriate. "
-        "Write the converted policy to {output_path}."
-    ),
-    # ClusterPolicy → GeneratingPolicy
-    ("cluster-policy", "GeneratingPolicy"): (
-        "Convert the Kyverno ClusterPolicy (generate) in {input_path} to a Kyverno "
-        "GeneratingPolicy (apiVersion: policies.kyverno.io/v1alpha2, Kyverno 1.16+). "
-        "Preserve the resource generation logic. Write the converted policy "
+        "Convert the Kyverno ClusterPolicy in {input_path} to a "
+        "MutatingPolicy.{description_clause} Write the converted policy "
         "to {output_path}."
     ),
-    # ClusterPolicy → ImageValidatingPolicy
+    ("cluster-policy", "GeneratingPolicy"): (
+        "Convert the Kyverno ClusterPolicy in {input_path} to a "
+        "GeneratingPolicy.{description_clause} Write the converted policy "
+        "to {output_path}."
+    ),
     ("cluster-policy", "ImageValidatingPolicy"): (
-        "Convert the Kyverno ClusterPolicy (verifyImages) in {input_path} to a "
-        "Kyverno ImageValidatingPolicy (apiVersion: policies.kyverno.io/v1alpha2, "
-        "Kyverno 1.16+). Preserve the image verification rules. Write the "
-        "converted policy to {output_path}."
+        "Convert the Kyverno ClusterPolicy in {input_path} to an "
+        "ImageValidatingPolicy.{description_clause} Write the converted policy "
+        "to {output_path}."
     ),
-    # Gatekeeper → ValidatingPolicy
     ("gatekeeper", None): (
-        "Convert the Gatekeeper ConstraintTemplate and Constraint in "
-        "{input_path} to a Kyverno ValidatingPolicy (apiVersion: "
-        "policies.kyverno.io/v1alpha2, Kyverno 1.16+) using CEL-based validation "
-        "where appropriate. Write the converted policy to {output_path}."
+        "Convert the Gatekeeper policy in {input_path} to a Kyverno "
+        "ValidatingPolicy.{description_clause} Write the converted policy "
+        "to {output_path}."
     ),
-    # OPA → ValidatingPolicy
     ("opa", None): (
         "Convert the OPA/Rego policy in {input_path} to a Kyverno "
-        "ValidatingPolicy (apiVersion: policies.kyverno.io/v1alpha2, Kyverno 1.16+) "
-        "using CEL-based validation where appropriate. Write the converted "
-        "policy to {output_path}."
+        "ValidatingPolicy.{description_clause} Write the converted policy "
+        "to {output_path}."
     ),
-    # Sentinel → ValidatingPolicy
     ("sentinel", None): (
         "Convert the HashiCorp Sentinel policy in {input_path} to a Kyverno "
-        "ValidatingPolicy (apiVersion: policies.kyverno.io/v1alpha2, Kyverno 1.16+) "
-        "using CEL-based validation where appropriate. Write the converted "
-        "policy to {output_path}."
+        "ValidatingPolicy.{description_clause} Write the converted policy "
+        "to {output_path}."
     ),
-    # CleanupPolicy → DeletingPolicy
     ("cleanup", None): (
-        "Convert the Kyverno CleanupPolicy in {input_path} to a Kyverno "
-        "DeletingPolicy (apiVersion: policies.kyverno.io/v1alpha2, Kyverno 1.16+). "
-        "Write the converted policy to {output_path}."
+        "Convert the Kyverno CleanupPolicy in {input_path} to a "
+        "DeletingPolicy.{description_clause} Write the converted policy "
+        "to {output_path}."
     ),
 }
 
@@ -88,8 +70,7 @@ PROMPTS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 _GENERATION_PROMPT = (
-    "Write a Kyverno {output_kind} (apiVersion: policies.kyverno.io/v1alpha2) "
-    "that {description} Use CEL expressions for validation where appropriate. "
+    "Write a Kyverno {output_kind} that {description} "
     "Write the policy to {output_path}."
 )
 
@@ -123,4 +104,13 @@ def build_prompt(
         template = PROMPTS.get(track)
     if template is None:
         raise ValueError(f"Unknown track {track!r}. Known tracks: {sorted(PROMPTS)}")
-    return template.format(input_path=input_path, output_path=output_path)
+
+    description_clause = ""
+    if description:
+        description_clause = f" The policy {description}."
+
+    return template.format(
+        input_path=input_path,
+        output_path=output_path,
+        description_clause=description_clause,
+    )

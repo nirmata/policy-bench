@@ -1,0 +1,24 @@
+# nctl benchmark container.
+# Requires: nctl linux binary available at build context or via NCTL_BIN arg.
+#
+# Build:
+#   docker build -f Dockerfile.nctl -t benchmark-nctl \
+#     --build-arg NCTL_BIN=path/to/nctl .
+#
+# Auth env vars (passed at runtime via --env-file):
+#   NIRMATA_TOKEN, NIRMATA_URL
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN, AWS_REGION
+
+FROM benchmark-base
+
+USER root
+
+ARG NCTL_BIN=nctl
+COPY ${NCTL_BIN} /usr/local/bin/nctl
+RUN chmod +x /usr/local/bin/nctl
+
+COPY entrypoints/run-nctl.sh /entrypoints/run-nctl.sh
+RUN chmod +x /entrypoints/run-nctl.sh
+
+USER benchmark
+ENTRYPOINT ["/entrypoints/run-nctl.sh"]

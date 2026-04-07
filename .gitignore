@@ -27,6 +27,17 @@ blind-eval/.mapping.json
 blind-eval/scores.json
 blind-eval/revealed_scores.json
 
+# Docker secrets (API keys for containerized benchmarks)
+docker/secrets/
+# nctl binary (downloaded by run-benchmark.sh)
+docker/nctl
+
+# Local cache (schemas, binaries — downloaded on first run)
+.cache/
+
+# Compiled Go validator binary (at repo root, not the cmd/ source dir)
+/validate-policy
+
 # Kyverno policies sync (see scripts/sync_kyverno_policies.py)
 dataset/.cache/
 dataset/imported/**

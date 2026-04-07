@@ -18,10 +18,69 @@ def _strip_ansi(text: str) -> str:
     return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
+# New policy types don't have named rules — kyverno test shows "Excluded"
+# if a rule field is present but doesn't match.
+_NEW_POLICY_KINDS = {
+    "ValidatingPolicy",
+    "MutatingPolicy",
+    "GeneratingPolicy",
+    "DeletingPolicy",
+    "NamespacedDeletingPolicy",
+    "ImageValidatingPolicy",
+}
+
+
+def _find_test_file(test_dir: Path) -> Path | None:
+    """Return the test manifest path, or *None* if nothing suitable exists."""
+    explicit = test_dir / "kyverno-test.yaml"
+    if explicit.exists():
+        return explicit
+    for f in sorted(test_dir.iterdir()):
+        if f.suffix in (".yaml", ".yml") and f.name not in (
+            "resources.yaml",
+            "resource.yaml",
+        ):
+            return f
+    return None
+
+
+def _patch_test_manifest(
+    doc: dict,
+    output_policy_name: str | None,
+    output_policy_kind: str | None,
+) -> dict:
+    """Patch policy name, strip rule fields, and merge duplicates in *doc*."""
+    if "results" not in doc:
+        return doc
+
+    is_new_kind = output_policy_kind in _NEW_POLICY_KINDS
+    seen: dict[tuple, dict] = {}
+    for r in doc["results"]:
+        if not isinstance(r, dict):
+            continue
+        if output_policy_name and "policy" in r:
+            r["policy"] = output_policy_name
+        if is_new_kind:
+            r.pop("rule", None)
+            # Merge duplicates by resource -- new policy types evaluate all
+            # validations as a group, so ANY fail = overall fail.
+            res = r.get("resources") or [None]
+            key = (r.get("kind"), r.get("policy"), res[0])
+            if key in seen:
+                if r.get("result") == "fail":
+                    seen[key]["result"] = "fail"
+            else:
+                seen[key] = r
+    if is_new_kind:
+        doc["results"] = list(seen.values())
+    return doc
+
+
 def run_kyverno_test(
     test_dir: Path,
     *,
     output_policy_name: str | None = None,
+    output_policy_kind: str | None = None,
     policy_under_test: Path | None = None,
     timeout_sec: int = 60,
 ) -> tuple[bool, list[str], bool]:
@@ -35,6 +94,10 @@ def run_kyverno_test(
 
     If *output_policy_name* is set, patches ``results[].policy`` to match the
     converted policy's ``metadata.name``.
+
+    If *output_policy_kind* is a new policy type (ValidatingPolicy, etc.),
+    strips the ``rule`` field from results entries — new types don't have
+    named rules and kyverno test marks them "Excluded" if present.
     """
     if not shutil.which("kyverno"):
         return False, [], True
@@ -49,42 +112,30 @@ def run_kyverno_test(
     if yaml and (policy_under_test is not None or output_policy_name):
         try:
             cleanup_dir = Path(tempfile.mkdtemp(prefix="kyverno_test_"))
-            # Copy all resource/test YAML assets from the suite (resource.yaml, resources.yaml, values.yaml, etc.)
             for f in test_dir.iterdir():
-                if f.suffix not in (".yaml", ".yml") or f.name.startswith("."):
-                    continue
-                if f.name == "kyverno-test.yaml":
-                    continue
-                shutil.copy(f, cleanup_dir / f.name)
+                if f.suffix in (".yaml", ".yml") and not f.name.startswith(".") and f.name != "kyverno-test.yaml":
+                    shutil.copy(f, cleanup_dir / f.name)
 
-            test_file = test_dir / "kyverno-test.yaml"
-            if not test_file.exists():
-                for f in sorted(test_dir.iterdir()):
-                    if f.suffix in (".yaml", ".yml") and f.name not in (
-                        "resources.yaml",
-                        "resource.yaml",
-                    ):
-                        test_file = f
-                        break
-
-            if test_file.exists():
+            test_file = _find_test_file(test_dir)
+            if test_file is not None:
                 doc = yaml.safe_load(test_file.read_text(encoding="utf-8"))
                 if isinstance(doc, dict):
                     if policy_under_test is not None:
                         doc["policies"] = [str(policy_under_test.resolve())]
-                    if output_policy_name and "results" in doc:
-                        for r in doc["results"]:
-                            if isinstance(r, dict) and "policy" in r:
-                                r["policy"] = output_policy_name
+                    doc = _patch_test_manifest(doc, output_policy_name, output_policy_kind)
                 (cleanup_dir / "kyverno-test.yaml").write_text(
                     yaml.dump(doc, default_flow_style=False, sort_keys=False),
                     encoding="utf-8",
                 )
                 run_dir = cleanup_dir
-        except Exception:
+        except (yaml.YAMLError, FileNotFoundError, KeyError, shutil.Error, OSError) as exc:
             if cleanup_dir and cleanup_dir.exists():
                 shutil.rmtree(cleanup_dir, ignore_errors=True)
-            cleanup_dir = None
+            return (
+                False,
+                [f"Test manifest patching failed: {exc}"],
+                False,
+            )
 
     try:
         proc = subprocess.run(

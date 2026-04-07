@@ -4,8 +4,8 @@ Validate a converted or generated policy.
 
 Three modes:
   1. **Input-only** — validate a source policy before converting.
-  2. **Conversion** (input + output) — schema + intent + semantic + diff.
-  3. **Generation / output-only** (output only, no input) — schema + semantic.
+  2. **Conversion** (input + output) — schema + CEL + functional test.
+  3. **Generation / output-only** (output only, no input) — schema + CEL.
 
 Usage:
   # Validate input policy only:
@@ -39,8 +39,8 @@ from evaluators.evaluate import evaluate, validate_input
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Validate converted or generated policy (schema + intent + semantic). "
-        "Omit --input for generation-only validation (schema + semantic)."
+        description="Validate converted or generated policy (schema + CEL + functional). "
+        "Omit --input for generation-only validation (schema + CEL)."
     )
     parser.add_argument(
         "--input",
@@ -55,7 +55,6 @@ def main() -> int:
         "--tool", default="unknown", help="Tool label for results (e.g. nctl, cursor, claude)"
     )
     parser.add_argument("--track", default=None, help="Conversion track (auto-detected if omitted)")
-    parser.add_argument("--no-kubectl", action="store_true", help="Skip kubectl dry-run")
     parser.add_argument(
         "--skip-kyverno-test",
         action="store_true",
@@ -103,7 +102,7 @@ def main() -> int:
 
     # --- Input-only mode ---
     if input_only:
-        passed, errors = validate_input(track, input_path, use_kubectl=not args.no_kubectl)
+        passed, errors = validate_input(track, input_path, use_kubectl=True)
         if passed:
             print("Input policy: PASS (valid legacy policy; safe to convert)")
             return 0
@@ -115,7 +114,7 @@ def main() -> int:
     # --- Conversion mode: validate input first ---
     if not is_generate and input_path:
         input_pass, input_errors = validate_input(
-            track, input_path, use_kubectl=not args.no_kubectl
+            track, input_path, use_kubectl=True
         )
         if not input_pass:
             print("Input policy: FAIL (fix before comparing conversion output)", file=sys.stderr)
@@ -135,7 +134,7 @@ def main() -> int:
         input_path,
         output_path,
         expected_output_kind=args.expected_kind,
-        use_kubectl=not args.no_kubectl,
+        use_kubectl=True,
         skip_kyverno_test=args.skip_kyverno_test,
         kyverno_test_dir=kyverno_test_dir if kyverno_test_dir.is_dir() else None,
         task_type=task_type,
@@ -161,11 +160,9 @@ def main() -> int:
 
     # --- Pretty summary ---
     schema_pass = eval_result["schema_pass"]
-    intent_pass = eval_result.get("intent_pass")
     semantic_pass = eval_result.get("semantic_pass")
     semantic_skipped = eval_result.get("semantic_skipped", True)
     schema_errors = eval_result.get("schema_errors", [])
-    intent_errors = eval_result.get("intent_errors", [])
     semantic_errors = eval_result.get("semantic_errors", [])
 
     print()
@@ -173,44 +170,30 @@ def main() -> int:
     print(f"  {mode_label} validation results")
     print("  " + "-" * 40)
     print(
-        f"  1. Schema   {'PASS' if schema_pass else 'FAIL'}"
-        f"  -- output is valid Kyverno 1.16+ YAML"
+        f"  1. Schema+CEL  {'PASS' if schema_pass else 'FAIL'}"
+        f"  -- valid structure, CEL compiles"
     )
     for e in schema_errors:
         print(f"      - {e}")
 
-    if intent_pass is None:
-        print("  2. Intent   N/A   -- skipped (generation task, no source policy)")
-    else:
-        print(
-            f"  2. Intent   {'PASS' if intent_pass else 'FAIL'}"
-            f"  -- converted policy matches source intent"
-        )
-        for e in intent_errors:
-            print(f"      - {e}")
-
     if semantic_skipped:
         reason = semantic_errors[0] if semantic_errors else "no test dir or kyverno CLI not on PATH"
-        print(f"  3. Semantic SKIP  -- {reason}")
+        print(f"  2. Functional  SKIP  -- {reason}")
     else:
         print(
-            f"  3. Semantic {'PASS' if semantic_pass else 'FAIL'}"
-            f"  -- Kyverno CLI test (policy behavior)"
+            f"  2. Functional  {'PASS' if semantic_pass else 'FAIL'}"
+            f"  -- kyverno test (policy behavior)"
         )
         for e in semantic_errors:
             for i, line in enumerate(e.splitlines()):
                 prefix = "      - " if i == 0 else "        "
                 print(f"{prefix}{line}")
 
-    diff = eval_result.get("diff_score")
-    if diff is not None:
-        print(f"  4. Diff score: {diff}")
-
     print("  " + "-" * 40)
     print(f"  Results: {out_json}")
     print()
 
-    all_pass = schema_pass and (intent_pass is None or intent_pass) and (semantic_skipped or semantic_pass)
+    all_pass = schema_pass and (semantic_skipped or semantic_pass)
     return 0 if all_pass else 1
 
 

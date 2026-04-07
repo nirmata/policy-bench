@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
-import subprocess
 from pathlib import Path
 
 try:
@@ -12,7 +10,7 @@ except ImportError:
     yaml = None  # type: ignore[assignment]
 
 
-def validate(path: Path, *, use_kubectl: bool = True) -> tuple[bool, list[str]]:
+def validate(path: Path, **kwargs) -> tuple[bool, list[str]]:
     """Validate a legacy ClusterPolicy YAML file. Returns (passed, errors)."""
     errors: list[str] = []
 
@@ -52,42 +50,9 @@ def validate(path: Path, *, use_kubectl: bool = True) -> tuple[bool, list[str]]:
                 name = rule.get("name") or f"<rule {i}>"
                 if not rule.get("match"):
                     errors.append(f"Rule {name}: missing 'match'")
-                validate_block = rule.get("validate")
-                if not validate_block and "validate" not in rule:
-                    if not rule.get("mutate") and not rule.get("generate") and not rule.get(
-                        "verifyImages"
-                    ):
-                        errors.append(
-                            f"Rule {name}: missing 'validate', 'mutate', 'generate', or 'verifyImages'"
-                        )
-                if validate_block and isinstance(validate_block, dict):
-                    if not any(
-                        k in validate_block
-                        for k in ("pattern", "anyPattern", "deny", "message")
-                    ):
-                        errors.append(
-                            f"Rule {name}: validate should have pattern/anyPattern/deny and message"
-                        )
-
-    if errors:
-        return False, errors
-
-    if use_kubectl and shutil.which("kubectl"):
-        try:
-            proc = subprocess.run(
-                ["kubectl", "apply", "-f", str(path), "--dry-run=client"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if proc.returncode != 0:
-                err = (proc.stderr or proc.stdout or "").strip()
-                if not any(
-                    s in err.lower()
-                    for s in ("no matches for kind", "ensure crds")
-                ):
-                    errors.append(f"kubectl dry-run: {err[:400]}")
-        except Exception:
-            pass
+                if not any(rule.get(k) for k in ("validate", "mutate", "generate", "verifyImages")):
+                    errors.append(
+                        f"Rule {name}: missing 'validate', 'mutate', 'generate', or 'verifyImages'"
+                    )
 
     return len(errors) == 0, errors

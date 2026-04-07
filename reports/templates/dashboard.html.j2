@@ -3,345 +3,193 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Policy conversion &amp; generation benchmark</title>
+<title>Policy Conversion Benchmark</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
-  :root { --bg: #0d1117; --fg: #c9d1d9; --card: #161b22; --border: #30363d; --accent: #58a6ff; }
+  :root {
+    --bg: #0a0e14; --fg: #d4d4d8; --card: #12161e; --border: #1e2530;
+    --accent: #6ea8fe; --green: #4ade80; --red: #f87171; --yellow: #fbbf24;
+    --muted: #71717a;
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-         background: var(--bg); color: var(--fg); padding: 2rem; }
-  h1 { color: var(--accent); margin-bottom: 0.5rem; }
-  h2.section-title { font-size: 1.25rem; color: var(--accent); margin: 0 0 0.75rem 0; }
-  .meta { color: #8b949e; margin-bottom: 1rem; font-size: 0.9rem; }
-  .nav { margin-bottom: 1.5rem; font-size: 0.95rem; }
-  .nav a { color: var(--accent); margin-right: 1rem; }
-  .section { margin-top: 2.5rem; padding-top: 2rem; border-top: 1px solid var(--border); }
-  .section:first-of-type { margin-top: 0.5rem; padding-top: 0; border-top: none; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; }
-  .card h2 { font-size: 1.1rem; margin-bottom: 1rem; color: var(--accent); }
-  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-  th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
-  th { color: var(--accent); font-weight: 600; }
-  canvas { max-height: 300px; }
-  .filter select { background: var(--card); color: var(--fg); border: 1px solid var(--border);
-                   padding: 0.4rem 0.8rem; border-radius: 4px; margin-right: 0.5rem; }
-  .empty-hint { color: #8b949e; font-style: italic; padding: 0.5rem 0; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+         background: var(--bg); color: var(--fg); padding: 3rem; max-width: 1200px; margin: 0 auto; }
+
+  h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.15rem; }
+  .subtitle { color: var(--muted); font-size: 0.82rem; margin-bottom: 2.5rem; }
+
+  /* Leaderboard */
+  .leaderboard { background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+                 padding: 2rem; margin-bottom: 2rem; }
+  .leaderboard h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em;
+                     color: var(--muted); margin-bottom: 1.25rem; }
+  .lb-table { width: 100%; border-collapse: collapse; }
+  .lb-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em;
+                 color: var(--muted); font-weight: 600; padding: 0 0.75rem 0.75rem; text-align: left; }
+  .lb-table td { padding: 0.85rem 0.75rem; border-top: 1px solid var(--border); }
+  .lb-table tr:first-child td { border-top: none; }
+  .tool-name { font-weight: 700; font-size: 1rem; }
+  .pass-rate { font-size: 1.8rem; font-weight: 800; }
+  .pass-rate.high { color: var(--green); }
+  .pass-rate.mid { color: var(--yellow); }
+  .pass-rate.low { color: var(--red); }
+  .metric { font-size: 0.9rem; color: var(--fg); }
+  .metric-label { font-size: 0.7rem; color: var(--muted); }
+  .rank { display: inline-flex; align-items: center; justify-content: center;
+          width: 30px; height: 30px; border-radius: 50%; font-weight: 800; font-size: 0.9rem; }
+  .rank-1 { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #000; }
+  .rank-2 { background: linear-gradient(135deg, #9ca3af, #6b7280); color: #000; }
+  .rank-3 { background: linear-gradient(135deg, #d97706, #b45309); color: #fff; }
+  .rank-n { background: var(--border); color: var(--fg); }
+
+  /* Charts grid */
+  .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+  .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem; }
+  .chart-card h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em;
+                    color: var(--muted); margin-bottom: 1rem; }
+  canvas { max-height: 280px; }
+
+  /* Results table */
+  .results { background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+             padding: 2rem; }
+  .results h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em;
+                color: var(--muted); margin-bottom: 1.25rem; }
+  .res-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  .res-table th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em;
+                  color: var(--muted); font-weight: 600; padding: 0 0.6rem 0.6rem; text-align: left; }
+  .res-table td { padding: 0.55rem 0.6rem; border-top: 1px solid var(--border); }
+  .pass { color: var(--green); font-weight: 600; }
+  .fail { color: var(--red); font-weight: 600; }
+  .err-text { font-size: 0.72rem; color: var(--muted); max-width: 350px;
+              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  @media (max-width: 800px) { .charts { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
-<h1>Policy conversion &amp; generation benchmark</h1>
-<p class="meta">Generated: {{ agg.generated_at }}</p>
 
-<nav class="nav">
-  <a href="#combined">Combined</a>
-  <a href="#conversion">Conversion</a>
-  <a href="#generation">Generation</a>
-  <a href="#all-results">All results</a>
-</nav>
+<h1>Policy Conversion Benchmark</h1>
+<p class="subtitle">{{ agg.generated_at[:10] }} &middot; {{ agg.results | length }} tasks &middot; {{ agg.tool_stats | length }} tools &middot; Bare-minimum prompts, containerized isolation</p>
 
-<section id="combined" class="section">
-  <h2 class="section-title">Combined (all tasks)</h2>
-  <p class="meta">All runs together. <strong>convert</strong> = source policy → Kyverno 1.16+; <strong>generate</strong> = natural-language prompt only (intent/diff N/A).</p>
-
-<div class="grid">
-  <div class="card">
-    <h2>Leaderboard</h2>
-    <table>
-      <tr><th>Rank</th><th>Tool</th><th>Pass Rate</th><th>Avg Time</th><th>Cost</th><th>Diff</th><th>Score</th></tr>
-      {% for e in leaderboard %}
-      <tr>
-        <td>{{ e.rank }}</td><td>{{ e.tool }}</td>
-        <td>{{ "%.0f%%" | format(e.pass_rate * 100) }}</td>
-        <td>{{ "%.1fs" | format(e.avg_time) if e.avg_time else "-" }}</td>
-        <td>{{ "$%.4f" | format(e.avg_cost) if e.avg_cost else "-" }}</td>
-        <td>{{ "%.2f" | format(e.avg_diff_score) if e.avg_diff_score is not none else "-" }}</td>
-        <td>{{ "%.2f" | format(e.composite_score) }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-  </div>
-
-  <div class="card">
-    <h2>Pass Rate (%)</h2>
-    <canvas id="passChart"></canvas>
-  </div>
-
-  <div class="card">
-    <h2>Avg time (s)</h2>
-    <canvas id="timeChart"></canvas>
-  </div>
-
-  <div class="card">
-    <h2>Composite score</h2>
-    <canvas id="scoreChart"></canvas>
-  </div>
-
-  <div class="card">
-    <h2>By task type</h2>
-    <table>
-      <tr><th>Type</th><th>Passed</th><th>Total</th><th>Avg time</th></tr>
-      {% for tt, stats in agg.task_type_stats.items() %}
-      <tr>
-        <td><strong>{{ tt }}</strong></td>
-        <td>{{ stats.passed }}</td>
-        <td>{{ stats.total }}</td>
-        <td>{{ "%.1fs" | format(stats.avg_time) if stats.avg_time else "—" }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-  </div>
-</div>
-</section>
-
-<section id="conversion" class="section">
-  <h2 class="section-title">Conversion benchmark</h2>
-  <p class="meta">Only <code>task_type = convert</code>. Evaluated with schema, intent, semantic, and structural diff vs reference.</p>
-  {% if has_convert %}
-  <div class="grid">
-    <div class="card">
-      <h2>Leaderboard (conversion)</h2>
-      <table>
-        <tr><th>Rank</th><th>Tool</th><th>Pass Rate</th><th>Avg Time</th><th>Cost</th><th>Diff</th><th>Score</th></tr>
-        {% for e in leaderboard_convert %}
-        <tr>
-          <td>{{ e.rank }}</td><td>{{ e.tool }}</td>
-          <td>{{ "%.0f%%" | format(e.pass_rate * 100) }}</td>
-          <td>{{ "%.1fs" | format(e.avg_time) if e.avg_time else "-" }}</td>
-          <td>{{ "$%.4f" | format(e.avg_cost) if e.avg_cost else "-" }}</td>
-          <td>{{ "%.2f" | format(e.avg_diff_score) if e.avg_diff_score is not none else "-" }}</td>
-          <td>{{ "%.2f" | format(e.composite_score) }}</td>
-        </tr>
-        {% endfor %}
-      </table>
-    </div>
-    <div class="card"><h2>Pass rate (%)</h2><canvas id="passChartConv"></canvas></div>
-    <div class="card"><h2>Avg time (s)</h2><canvas id="timeChartConv"></canvas></div>
-    <div class="card"><h2>Composite score</h2><canvas id="scoreChartConv"></canvas></div>
-  </div>
-  <div class="card">
-    <h2>Conversion results</h2>
-    <div class="filter">
-      <select id="toolFilterConv" onchange="filterConvTable()"><option value="">All tools</option></select>
-      <select id="trackFilterConv" onchange="filterConvTable()"><option value="">All tracks</option></select>
-    </div>
-    <table id="resultsTableConv">
-      <thead><tr><th>Tool</th><th>Policy</th><th>Output kind</th><th>Track</th><th>Status</th><th>Time</th><th>Cost</th><th>Diff</th></tr></thead>
-      <tbody>
-      {% for r in convert_results %}
-      <tr>
-        <td>{{ r.tool }}</td>
-        <td>{{ r.policy_id | default("—") }}</td>
-        <td>{{ r.expected_output_kind | default("—") }}</td>
-        <td>{{ r.track }}</td>
-        <td>{{ "PASS" if r.success else "FAIL" }}</td>
-        <td>{{ "%.1fs" | format(r.conversion_time_seconds) if r.conversion_time_seconds else "-" }}</td>
-        <td>{{ "$%.4f" | format(r.cost_usd) if r.cost_usd else "-" }}</td>
-        <td>{% if r.diff_score is not none %}{{ "%.2f" | format(r.diff_score) }}{% else %}—{% endif %}</td>
-      </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <p class="empty-hint">No conversion runs in this results file.</p>
-  {% endif %}
-</section>
-
-<section id="generation" class="section">
-  <h2 class="section-title">Generation benchmark</h2>
-  <p class="meta">Only <code>task_type = generate</code>. Evaluated with schema + semantic checks; intent and diff are skipped.</p>
-  {% if has_generate %}
-  <div class="grid">
-    <div class="card">
-      <h2>Leaderboard (generation)</h2>
-      <table>
-        <tr><th>Rank</th><th>Tool</th><th>Pass Rate</th><th>Avg Time</th><th>Cost</th><th>Diff</th><th>Score</th></tr>
-        {% for e in leaderboard_generate %}
-        <tr>
-          <td>{{ e.rank }}</td><td>{{ e.tool }}</td>
-          <td>{{ "%.0f%%" | format(e.pass_rate * 100) }}</td>
-          <td>{{ "%.1fs" | format(e.avg_time) if e.avg_time else "-" }}</td>
-          <td>{{ "$%.4f" | format(e.avg_cost) if e.avg_cost else "-" }}</td>
-          <td>{{ "%.2f" | format(e.avg_diff_score) if e.avg_diff_score is not none else "-" }}</td>
-          <td>{{ "%.2f" | format(e.composite_score) }}</td>
-        </tr>
-        {% endfor %}
-      </table>
-    </div>
-    <div class="card"><h2>Pass rate (%)</h2><canvas id="passChartGen"></canvas></div>
-    <div class="card"><h2>Avg time (s)</h2><canvas id="timeChartGen"></canvas></div>
-    <div class="card"><h2>Composite score</h2><canvas id="scoreChartGen"></canvas></div>
-  </div>
-  <div class="card">
-    <h2>Generation results</h2>
-    <div class="filter">
-      <select id="toolFilterGen" onchange="filterGenTable()"><option value="">All tools</option></select>
-      <select id="trackFilterGen" onchange="filterGenTable()"><option value="">All tracks</option></select>
-    </div>
-    <table id="resultsTableGen">
-      <thead><tr><th>Tool</th><th>Policy</th><th>Output kind</th><th>Track</th><th>Status</th><th>Time</th><th>Cost</th><th>Diff</th></tr></thead>
-      <tbody>
-      {% for r in generate_results %}
-      <tr>
-        <td>{{ r.tool }}</td>
-        <td>{{ r.policy_id | default("—") }}</td>
-        <td>{{ r.expected_output_kind | default("—") }}</td>
-        <td>{{ r.track }}</td>
-        <td>{{ "PASS" if r.success else "FAIL" }}</td>
-        <td>{{ "%.1fs" | format(r.conversion_time_seconds) if r.conversion_time_seconds else "-" }}</td>
-        <td>{{ "$%.4f" | format(r.cost_usd) if r.cost_usd else "-" }}</td>
-        <td>{% if r.diff_score is not none %}{{ "%.2f" | format(r.diff_score) }}{% else %}—{% endif %}</td>
-      </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <p class="empty-hint">No generation runs in this results file.</p>
-  {% endif %}
-</section>
-
-<section id="all-results" class="section">
-<div class="card">
-  <h2>All results (conversion + generation)</h2>
-  <p class="meta" style="margin-bottom:1rem;">Filter by tool, task type, or track.</p>
-  <div class="filter">
-    <select id="toolFilter" onchange="filterTable()"><option value="">All tools</option></select>
-    <select id="taskTypeFilter" onchange="filterTable()"><option value="">All task types</option></select>
-    <select id="trackFilter" onchange="filterTable()"><option value="">All tracks</option></select>
-  </div>
-  <table id="resultsTable">
-    <thead><tr><th>Tool</th><th>Policy</th><th>Task</th><th>Output kind</th><th>Track</th><th>Status</th><th>Time</th><th>Cost</th><th>Diff</th></tr></thead>
-    <tbody>
-    {% for r in agg.results %}
+{# ---- Leaderboard ---- #}
+<div class="leaderboard">
+  <h2>Leaderboard &mdash; ranked by pass rate</h2>
+  <table class="lb-table">
     <tr>
-      <td>{{ r.tool }}</td>
-      <td>{{ r.policy_id | default("—") }}</td>
-      <td>{{ r.task_type | default("convert") }}</td>
-      <td>{{ r.expected_output_kind | default("—") }}</td>
-      <td>{{ r.track }}</td>
-      <td>{{ "PASS" if r.success else "FAIL" }}</td>
-      <td>{{ "%.1fs" | format(r.conversion_time_seconds) if r.conversion_time_seconds else "-" }}</td>
-      <td>{{ "$%.4f" | format(r.cost_usd) if r.cost_usd else "-" }}</td>
-      <td>{% if r.diff_score is not none %}{{ "%.2f" | format(r.diff_score) }}{% else %}—{% endif %}</td>
+      <th></th>
+      <th>Tool</th>
+      <th>Pass Rate</th>
+      <th>Schema + CEL</th>
+      <th>Functional</th>
+      <th>Avg Time</th>
+      <th>Avg Cost</th>
+    </tr>
+    {% for e in leaderboard %}
+    <tr>
+      <td><span class="rank rank-{{ e.rank if e.rank <= 3 else 'n' }}">{{ e.rank }}</span></td>
+      <td class="tool-name">{{ e.tool }}</td>
+      <td><span class="pass-rate {% if e.pass_rate >= 0.7 %}high{% elif e.pass_rate >= 0.4 %}mid{% else %}low{% endif %}">{{ "%.0f" | format(e.pass_rate * 100) }}%</span></td>
+      <td class="metric">{{ e.schema_pass }}<span class="metric-label"> / {{ e.total }}</span></td>
+      <td class="metric">{{ e.semantic_pass }}<span class="metric-label"> / {{ e.semantic_total }}</span></td>
+      <td class="metric">{{ "%.1f" | format(e.avg_time) }}s</td>
+      <td class="metric">${{ "%.4f" | format(e.avg_cost) if e.avg_cost else "-" }}</td>
     </tr>
     {% endfor %}
-    </tbody>
   </table>
 </div>
-</section>
+
+{# ---- Charts ---- #}
+<div class="charts">
+  <div class="chart-card">
+    <h2>Pass Rate Comparison</h2>
+    <canvas id="passChart"></canvas>
+  </div>
+  <div class="chart-card">
+    <h2>Accuracy vs Cost</h2>
+    <canvas id="scatterChart"></canvas>
+  </div>
+</div>
+
+{# ---- Per-task results ---- #}
+<div class="results">
+  <h2>Per-Task Results</h2>
+  <table class="res-table">
+    <tr>
+      <th>Policy</th>
+      <th>Kind</th>
+      {% for tool in agg.tool_stats.keys() | sort %}<th>{{ tool }}</th>{% endfor %}
+    </tr>
+    {% set ns = namespace(policies=[]) %}
+    {% for r in agg.results %}
+      {% if r.policy_id not in ns.policies %}
+        {% set _ = ns.policies.append(r.policy_id) %}
+      {% endif %}
+    {% endfor %}
+    {% for pid in ns.policies | sort %}
+    <tr>
+      <td>{{ pid }}</td>
+      {% set first = agg.results | selectattr("policy_id", "equalto", pid) | first %}
+      <td style="font-size:0.75rem; color:var(--muted);">{{ first.expected_output_kind | default("—") }}</td>
+      {% for tool in agg.tool_stats.keys() | sort %}
+        {% set match = agg.results | selectattr("policy_id", "equalto", pid) | selectattr("tool", "equalto", tool) | list %}
+        {% if match %}
+          {% set r = match[0] %}
+          <td class="{% if r.success %}pass{% else %}fail{% endif %}">{{ "PASS" if r.success else "FAIL" }}</td>
+        {% else %}
+          <td style="color:var(--muted);">—</td>
+        {% endif %}
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </table>
+</div>
 
 <script>
-const chartOpts = { responsive: true, plugins: { legend: { display: false } } };
-const colors = ['#58a6ff','#f78166','#7ee787','#d2a8ff','#79c0ff','#ffa657'];
-
-function mkBar(id, labels, data, label) {
-  const el = document.getElementById(id);
-  if (!el || !labels.length) return;
-  new Chart(el, {
-    type: 'bar',
-    data: { labels, datasets: [{ label, data, backgroundColor: colors.slice(0, labels.length) }] },
-    options: chartOpts
-  });
-}
-
+const chartColors = { nctl: '#6ea8fe', claude: '#f87171', cursor: '#4ade80' };
 const tools = {{ leaderboard | map(attribute='tool') | list | tojson }};
 const passRates = {{ leaderboard | map(attribute='pass_rate') | list | tojson }}.map(x => x * 100);
-const times = {{ leaderboard | map(attribute='avg_time') | list | tojson }}.map(x => x || 0);
-const scores = {{ leaderboard | map(attribute='composite_score') | list | tojson }};
-mkBar('passChart', tools, passRates, 'Pass Rate %');
-mkBar('timeChart', tools, times, 'Avg Time (s)');
-mkBar('scoreChart', tools, scores, 'Composite Score');
+const costs = {{ leaderboard | map(attribute='avg_cost') | list | tojson }}.map(x => x || 0);
+const bgColors = tools.map(t => chartColors[t] || '#a78bfa');
 
-{% if has_convert %}
-const toolsConv = {{ leaderboard_convert | map(attribute='tool') | list | tojson }};
-const passRatesConv = {{ leaderboard_convert | map(attribute='pass_rate') | list | tojson }}.map(x => x * 100);
-const timesConv = {{ leaderboard_convert | map(attribute='avg_time') | list | tojson }}.map(x => x || 0);
-const scoresConv = {{ leaderboard_convert | map(attribute='composite_score') | list | tojson }};
-mkBar('passChartConv', toolsConv, passRatesConv, 'Pass Rate %');
-mkBar('timeChartConv', toolsConv, timesConv, 'Avg Time (s)');
-mkBar('scoreChartConv', toolsConv, scoresConv, 'Composite Score');
-{% endif %}
+const gridColor = '#1e2530';
+const tickColor = '#71717a';
+const scaleOpts = { grid: { color: gridColor }, ticks: { color: tickColor } };
 
-{% if has_generate %}
-const toolsGen = {{ leaderboard_generate | map(attribute='tool') | list | tojson }};
-const passRatesGen = {{ leaderboard_generate | map(attribute='pass_rate') | list | tojson }}.map(x => x * 100);
-const timesGen = {{ leaderboard_generate | map(attribute='avg_time') | list | tojson }}.map(x => x || 0);
-const scoresGen = {{ leaderboard_generate | map(attribute='composite_score') | list | tojson }};
-mkBar('passChartGen', toolsGen, passRatesGen, 'Pass Rate %');
-mkBar('timeChartGen', toolsGen, timesGen, 'Avg Time (s)');
-mkBar('scoreChartGen', toolsGen, scoresGen, 'Composite Score');
-{% endif %}
-
-const tbl = document.getElementById('resultsTable');
-const rows = tbl.querySelectorAll('tbody tr');
-const toolSet = new Set(), taskTypeSet = new Set(), trackSet = new Set();
-rows.forEach(r => {
-  toolSet.add(r.cells[0].textContent);
-  taskTypeSet.add(r.cells[2].textContent);
-  trackSet.add(r.cells[4].textContent);
+// Pass rate bar chart
+new Chart(document.getElementById('passChart'), {
+  type: 'bar',
+  data: { labels: tools, datasets: [{ data: passRates, backgroundColor: bgColors, borderRadius: 8, barPercentage: 0.5 }] },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.raw.toFixed(0) + '%' } } },
+    scales: { y: { ...scaleOpts, beginAtZero: true, max: 100, ticks: { ...scaleOpts.ticks, callback: v => v + '%' } }, x: { ...scaleOpts, grid: { display: false } } }
+  }
 });
-const tf = document.getElementById('toolFilter');
-const ttf = document.getElementById('taskTypeFilter');
-const tkf = document.getElementById('trackFilter');
-toolSet.forEach(t => { const o = document.createElement('option'); o.value=t; o.textContent=t; tf.appendChild(o); });
-taskTypeSet.forEach(t => { const o = document.createElement('option'); o.value=t; o.textContent=t; ttf.appendChild(o); });
-trackSet.forEach(t => { const o = document.createElement('option'); o.value=t; o.textContent=t; tkf.appendChild(o); });
 
-function filterTable() {
-  const tv = tf.value, ttv = ttf.value, tkv = tkf.value;
-  rows.forEach(r => {
-    const show = (!tv || r.cells[0].textContent===tv)
-      && (!ttv || r.cells[2].textContent===ttv)
-      && (!tkv || r.cells[4].textContent===tkv);
-    r.style.display = show ? '' : 'none';
-  });
-}
-
-{% if has_convert %}
-(function setupConvFilters() {
-  const t = document.getElementById('resultsTableConv');
-  const r = t.querySelectorAll('tbody tr');
-  const toolsC = new Set(), tracksC = new Set();
-  r.forEach(row => { toolsC.add(row.cells[0].textContent); tracksC.add(row.cells[3].textContent); });
-  const tfc = document.getElementById('toolFilterConv');
-  const trc = document.getElementById('trackFilterConv');
-  toolsC.forEach(x => { const o = document.createElement('option'); o.value=x; o.textContent=x; tfc.appendChild(o); });
-  tracksC.forEach(x => { const o = document.createElement('option'); o.value=x; o.textContent=x; trc.appendChild(o); });
-  window._rowsConv = r;
-})();
-function filterConvTable() {
-  const tv = document.getElementById('toolFilterConv').value;
-  const kv = document.getElementById('trackFilterConv').value;
-  window._rowsConv.forEach(r => {
-    const show = (!tv || r.cells[0].textContent===tv) && (!kv || r.cells[3].textContent===kv);
-    r.style.display = show ? '' : 'none';
-  });
-}
-{% endif %}
-
-{% if has_generate %}
-(function setupGenFilters() {
-  const t = document.getElementById('resultsTableGen');
-  const r = t.querySelectorAll('tbody tr');
-  const toolsG = new Set(), tracksG = new Set();
-  r.forEach(row => { toolsG.add(row.cells[0].textContent); tracksG.add(row.cells[3].textContent); });
-  const tfg = document.getElementById('toolFilterGen');
-  const trg = document.getElementById('trackFilterGen');
-  toolsG.forEach(x => { const o = document.createElement('option'); o.value=x; o.textContent=x; tfg.appendChild(o); });
-  tracksG.forEach(x => { const o = document.createElement('option'); o.value=x; o.textContent=x; trg.appendChild(o); });
-  window._rowsGen = r;
-})();
-function filterGenTable() {
-  const tv = document.getElementById('toolFilterGen').value;
-  const kv = document.getElementById('trackFilterGen').value;
-  window._rowsGen.forEach(r => {
-    const show = (!tv || r.cells[0].textContent===tv) && (!kv || r.cells[3].textContent===kv);
-    r.style.display = show ? '' : 'none';
-  });
-}
-{% endif %}
+// Accuracy vs Cost scatter
+new Chart(document.getElementById('scatterChart'), {
+  type: 'scatter',
+  data: {
+    datasets: tools.map((t, i) => ({
+      label: t,
+      data: [{ x: costs[i] * 1000, y: passRates[i] }],
+      backgroundColor: bgColors[i],
+      pointRadius: 8,
+      pointHoverRadius: 11,
+    }))
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { display: true, labels: { color: tickColor, usePointStyle: true, pointStyle: 'circle' } },
+      tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.raw.y.toFixed(0) + '% pass, $' + (ctx.raw.x / 1000).toFixed(4) + '/task' } }
+    },
+    scales: {
+      x: { ...scaleOpts, title: { display: true, text: 'Avg Cost per Task ($ x1000)', color: tickColor }, grid: { color: gridColor } },
+      y: { ...scaleOpts, title: { display: true, text: 'Pass Rate (%)', color: tickColor }, beginAtZero: true, max: 100, ticks: { ...scaleOpts.ticks, callback: v => v + '%' } }
+    }
+  }
+});
 </script>
 </body>
 </html>

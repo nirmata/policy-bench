@@ -14,7 +14,11 @@ tools:
     type: cli
     command: "cursor -p"
     enabled: true
-    # Priority: cursor CLI (--force) > manual (poll for output file)
+  codex:
+    type: cli
+    command: "codex exec"
+    api_key_env: "CODEX_API_KEY"
+    enabled: true
 
 # Tracks define the conversion source format → target mapping.
 # The expected_output_kind per policy in index.yaml can override the default.
@@ -58,7 +62,7 @@ task_types:
   convert:
     description: "Convert an existing policy from source format to Kyverno 1.16+"
     requires_input: true
-    evaluations: [schema, intent, semantic, diff]
+    evaluations: [schema, semantic]
   generate:
     description: "Generate a new policy from a natural-language description"
     requires_input: false
@@ -66,12 +70,11 @@ task_types:
 
 evaluation:
   skip_kyverno_test: false
-  kubectl_dry_run: true
   timeout_seconds: 600
 
+# Leaderboard ranked by pass_rate (schema + CEL + functional).
+# Speed and cost reported as separate supplementary metrics.
+# This follows SWE-bench, HumanEval, Aider, and CursorBench conventions —
+# no composite score, no arbitrary weights.
 leaderboard:
-  weights:
-    pass_rate: 0.5
-    speed: 0.2
-    diff_score: 0.2
-    cost: 0.1
+  rank_by: pass_rate

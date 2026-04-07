@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -111,8 +112,8 @@ class NctlRunner(ToolRunner):
         if output_path.exists():
             try:
                 output_text = output_path.read_text(encoding="utf-8")
-            except Exception:
-                pass
+            except (OSError, UnicodeDecodeError) as exc:
+                print(f"  Warning: could not read output file: {exc}", file=sys.stderr)
         output_toks = estimate_tokens(output_text)
         cost = estimate_cost(input_toks, output_toks)
 

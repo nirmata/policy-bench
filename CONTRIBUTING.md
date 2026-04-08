@@ -40,8 +40,7 @@ For a deep dive into how each validation layer works, see [`docs/testing.md`](do
 pip install -r requirements.txt
 
 # 2. Go validator binary (required for all validation)
-cd cmd/validate-policy
-go build -o validate-policy .
+cd cmd/validate-policy && GOWORK=off go build -o ../../validate-policy .
 cd ../..
 
 # 3. Kyverno CLI — needed for functional (semantic) tests
@@ -203,7 +202,7 @@ kyverno test dataset/imported/kyverno-tests/cp_require_labels/
 | Custom test dir | `dataset/local/<id>/` | `dataset/local/my_custom_policy/` |
 | Test manifest | Always `kyverno-test.yaml` | — |
 | Test resources | Always `resource.yaml` (or `resources.yaml` for upstream) | — |
-| Result files | Auto-generated to `results/run_<timestamp>.json`; latest pinned at `results/benchmark_latest.json` | — |
+| Result files | Per-policy: `results/run_<timestamp>_<tool>_<policy_id>.json`; aggregated: `results/benchmark_<timestamp>.json` | — |
 
 Policies in `dataset/stress/` are intentionally malformed — do not add well-formed policies there.
 
@@ -310,7 +309,7 @@ Add a stress case when you find an input that causes the validator, benchmark ha
 
 ## Adding a New Tool
 
-Tools are plugged in via four touch points. Use an existing runner (e.g., `runners/claude_runner.py`) as a reference.
+Tools are plugged in via four touch points — the benchmark harness auto-discovers runners via convention, so no manual wiring is needed. Use an existing runner (e.g., `runners/claude_runner.py`) as a reference.
 
 ### 1. Create the runner
 
@@ -322,7 +321,8 @@ from .base import RunResult, ToolRunner
 class MyToolRunner(ToolRunner):
     name = "mytool"                   # matches the key in config.yaml
 
-    def run(self, prompt: str, output_path, *, timeout: int, **kwargs) -> RunResult:
+    def run(self, input_path: Path, output_path: Path, prompt: str, *, 
+            timeout_seconds: int = 120, config: dict | None = None) -> RunResult:
         # 1. Invoke the tool (subprocess, API call, etc.)
         # 2. Capture output and write YAML to output_path
         # 3. Return a RunResult with timing, token counts, cost
@@ -331,20 +331,14 @@ class MyToolRunner(ToolRunner):
 
 The contract from `base.py`:
 - `run()` must write the converted policy to `output_path` if conversion succeeded.
-- Return a `RunResult` with `success=True/False`, `conversion_time_seconds`, and — if available — `input_tokens`, `output_tokens`, `cost_usd`, `model`.
+- Return a `RunResult` with `output_path`, `success=True/False`, `conversion_time_seconds`, and — if available — `input_tokens`, `output_tokens`, `cost_usd`, `model`.
 - Token counts may be estimated using `estimate_tokens()` from `base.py` if the tool doesn't expose them.
 
-### 2. Register in `runners/__init__.py`
-
-```python
-from .mytool_runner import MyToolRunner
-```
-
-### 3. Add a Docker image (for containerized runs)
+### 2. Add a Docker image (for containerized runs)
 
 Create `docker/Dockerfile.mytool` and `docker/entrypoints/run-mytool.sh`. Follow the pattern of `Dockerfile.claude` and `run-claude.sh`. Then add it to `docker/build.sh`.
 
-### 4. Add credentials template
+### 3. Add credentials template
 
 Add the required environment variables to `docker/.env.example`:
 
@@ -355,7 +349,7 @@ Add the required environment variables to `docker/.env.example`:
 
 And create `docker/secrets/mytool.env` locally (gitignored).
 
-### 5. Register in `config.yaml`
+### 4. Register in `config.yaml`
 
 ```yaml
 tools:
@@ -383,7 +377,7 @@ tools:
 pip install -r requirements.txt
 
 # Build the Go validator binary (required for schema + CEL validation)
-cd cmd/validate-policy && go build -o validate-policy . && cd ../..
+cd cmd/validate-policy && GOWORK=off go build -o ../../validate-policy . && cd ../..
 
 # Install Kyverno CLI (required for functional tests)
 # https://kyverno.io/docs/installation/quick-start/#install-kyverno-cli
@@ -409,7 +403,7 @@ cd cmd/validate-policy && go build -o validate-policy . && cd ../..
 | Command | Output |
 |---|---|
 | `validate.py` | JSON result printed to stdout |
-| `benchmark.py` / `run-benchmark.sh` | `results/run_<timestamp>.json`, updated `results/benchmark_latest.json` |
+| `benchmark.py` / `run-benchmark.sh` | Per-policy `results/run_<timestamp>_<tool>_<policy_id>.json`, aggregated `results/benchmark_<timestamp>.json` |
 | `reports/generate.py` | `reports/output/dashboard.html`, `reports/output/report.md` |
 | `kyverno test` | Pass/fail summary printed to stdout, no files written |
 
@@ -423,12 +417,11 @@ Running all 32 policies across multiple tools takes time. Use these flags to sco
 # Single policy
 python3 benchmark.py --tool nctl --policy-id cp_require_labels
 
-# Filter by difficulty (easy | medium | hard | stress)
+# Filter by difficulty (easy | medium | hard)
 python3 benchmark.py --tool nctl --difficulty easy
 
-# Filter by track
+# Filter by track (currently all 32 policies are cluster-policy)
 python3 benchmark.py --tool nctl --track cluster-policy
-# Available: cluster-policy, gatekeeper, opa, sentinel, cleanup
 
 # Filter by expected output kind
 python3 benchmark.py --tool nctl --output-kind MutatingPolicy
@@ -443,7 +436,7 @@ python3 benchmark.py --tool nctl --max-attempts 3
 python3 benchmark.py --tool claude --track cluster-policy --difficulty easy --max-attempts 2
 ```
 
-> Filtered runs do **not** update `results/benchmark_latest.json` — that file is only written by a full unfiltered run. See [Updating the Leaderboard](#updating-the-leaderboard).
+> `benchmark_latest.json` is never auto-produced — you must manually promote an aggregated run file. See [Updating the Leaderboard](#updating-the-leaderboard).
 
 ---
 
@@ -459,11 +452,13 @@ python3 reports/generate.py --format html
 # Output: reports/output/dashboard.html
 ```
 
-To update the leaderboard, run the benchmark locally and commit the updated `results/benchmark_latest.json`:
+To update the leaderboard, run the benchmark locally, promote the aggregated result, and commit:
 
 ```bash
 ./run-benchmark.sh --tool nctl claude --containerized
-# Inspect results/benchmark_latest.json, then commit it
+# Then promote the aggregated file:
+cp results/benchmark_<timestamp>.json results/benchmark_latest.json
+# Inspect and commit results/benchmark_latest.json
 ```
 
 ---
@@ -480,19 +475,19 @@ To update the leaderboard, run the benchmark locally and commit the updated `res
 
 ### When NOT to update it
 
-- After a filtered or partial run (`--policy-id`, `--difficulty`, `--track`, etc.) — partial results would silently drop policies from the leaderboard.
-- After aborting a run mid-way — `benchmark_latest.json` would only reflect completed policies.
+- From a filtered or partial run (`--policy-id`, `--difficulty`, `--track`, etc.) — partial results would silently drop policies from the leaderboard.
+- From an aborted run — the aggregated file would only reflect completed policies.
 - To make a single tool look better in isolation without re-running all tools.
 
 ### How it works
 
-`run-benchmark.sh` calls `benchmark.py`, which writes a timestamped file to `results/run_<timestamp>.json` and then copies it to `results/benchmark_latest.json` on successful completion. If you need to promote an older run to `latest` manually:
+`benchmark.py` writes per-policy results as `results/run_<timestamp>_<tool>_<policy_id>.json` and an aggregated file as `results/benchmark_<timestamp>.json`. It does **not** auto-produce `benchmark_latest.json` — you must promote a run manually:
 
 ```bash
-cp results/run_2025-06-01T12:00:00.json results/benchmark_latest.json
+cp results/benchmark_20250601_120000.json results/benchmark_latest.json
 ```
 
-Commit only `results/benchmark_latest.json` — individual run files (`run_*.json`) are gitignored.
+Commit only `results/benchmark_latest.json` — individual run files (`run_*.json`) and timestamped aggregates are gitignored.
 
 ---
 
@@ -554,15 +549,15 @@ chmod +x kyverno && mv kyverno /usr/local/bin/
 
 ```bash
 cd cmd/validate-policy
-go build -o validate-policy .
+GOWORK=off go build -o ../../validate-policy .
 cd ../..
 # Verify:
-./cmd/validate-policy/validate-policy --help
+./validate-policy --help
 ```
 
 ### Benchmark result not updating
 
-`results/benchmark_latest.json` is only written when a full benchmark run completes. If you aborted mid-run, delete the partial `results/run_<timestamp>.json` files and re-run.
+`results/benchmark_latest.json` is never auto-produced. After a successful full run, manually promote the aggregated file: `cp results/benchmark_<timestamp>.json results/benchmark_latest.json`.
 
 ### Dataset out of sync
 
@@ -590,4 +585,4 @@ A contributor who adds one new test case should be able to confirm it works by r
 ```bash
 ./run-benchmark.sh --tool nctl --policy-id <new-id> --containerized
 ```
-and seeing a result JSON entry for `<new-id>` in `results/benchmark_latest.json`.
+and seeing a result JSON file for `<new-id>` in `results/` (e.g., `results/run_*_nctl_<new-id>.json`).

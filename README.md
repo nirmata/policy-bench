@@ -8,6 +8,8 @@ Ranked by **pass rate only** — the percentage of tasks that pass all validatio
 
 Speed and cost are reported as supplementary metrics, not factored into ranking. The HTML dashboard includes an accuracy-vs-cost scatter plot for Pareto frontier visualization.
 
+Public dashboard: https://nirmata.github.io/convert-policies/
+
 ## Quick Start
 
 ```bash
@@ -155,18 +157,7 @@ convert-policies/
 
 ## Contributing
 
-### Add a new tool
-
-1. Create `runners/<tool>_runner.py` implementing `ToolRunner` from `runners/base.py`
-2. Add a Dockerfile at `docker/Dockerfile.<tool>` and entrypoint at `docker/entrypoints/run-<tool>.sh`
-3. Add the tool to `config.yaml`
-4. Run `./run-benchmark.sh --tool <tool> --containerized`
-
-### Add a new policy
-
-1. Add to `dataset/kyverno-upstream-manifest.yaml` (must have `.kyverno-test/` upstream)
-2. Add to `dataset/index.yaml` with `kyverno_test_dir`
-3. Run `python3 scripts/sync_kyverno_policies.py`
+See the contributing guide: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Transparency
 

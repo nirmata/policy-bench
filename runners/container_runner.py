@@ -13,10 +13,8 @@ No CLAUDE.md, no memory, no MCP servers, no previous outputs.
 from __future__ import annotations
 
 import re
-import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -65,76 +63,141 @@ class ContainerRunner(ToolRunner):
         config: dict | None = None,
     ) -> RunResult:
         config = config or {}
+        container_id = None
 
-        # --- 1. Create ephemeral workspace ---
-        workspace = tempfile.mkdtemp(prefix="benchmark_")
-        ws_output_dir = Path(workspace) / "output"
-        ws_output_dir.mkdir()
-
-        try:
-            return self._run_in_container(
-                input_path, output_path, prompt,
-                workspace, ws_output_dir,
-                timeout_seconds, config,
-            )
-        finally:
-            shutil.rmtree(workspace, ignore_errors=True)
-
-    def _run_in_container(
-        self,
-        input_path: Path,
-        output_path: Path,
-        prompt: str,
-        workspace: str,
-        ws_output_dir: Path,
-        timeout_seconds: int,
-        config: dict,
-    ) -> RunResult:
-        # --- 2. Copy input policy into workspace ---
-        # For generation tasks, benchmark.py passes output_path as input_path
-        # (via ``input_path or output_path``), so the equality check detects that.
         is_generate = not input_path or not input_path.is_file() or input_path == output_path
-        if not is_generate:
-            shutil.copy2(input_path, Path(workspace) / "policy.yaml")
-
-        # --- 3. Rewrite prompt paths for container ---
         container_prompt = self._rewrite_prompt(prompt, input_path, output_path)
 
-        # --- 4. Build docker command ---
-        # --network host: no-op on macOS Docker Desktop (bridge still provides
-        # outbound internet), but gives direct host network on Linux.
-        cmd = [
-            "docker", "run", "--rm",
-            "--network", "host",
-            "-v", f"{workspace}:/workspace",
-        ]
+        missing_vars = self._missing_required_env_vars()
+        if missing_vars:
+            vars_joined = ", ".join(missing_vars)
+            return RunResult(
+                output_path=output_path,
+                conversion_time_seconds=0.0,
+                success=False,
+                error=(
+                    f"Missing required container credentials for {self.name}: {vars_joined}. "
+                    f"Create {self._env_file} with these keys."
+                ),
+                model=f"{self.name}-container",
+            )
 
+        create_cmd = ["docker", "create", "--network", "host"]
         if self._env_file.is_file():
-            cmd += ["--env-file", str(self._env_file)]
-
+            create_cmd += ["--env-file", str(self._env_file)]
         for key, val in config.get("container_env", {}).items():
             if not _ENV_KEY_RE.match(key):
                 raise ValueError(f"Invalid env var name in container_env: {key!r}")
-            cmd += ["-e", f"{key}={val}"]
+            create_cmd += ["-e", f"{key}={val}"]
+        create_cmd += [self._image, container_prompt]
 
-        cmd += [self._image, container_prompt]
-
-        # --- 5. Execute ---
         start = time.monotonic()
         try:
-            proc = subprocess.run(
-                cmd,
+            create_proc = subprocess.run(
+                create_cmd,
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            if create_proc.returncode != 0:
+                return RunResult(
+                    output_path=output_path,
+                    conversion_time_seconds=round(time.monotonic() - start, 3),
+                    success=False,
+                    error=f"Failed to create container: {(create_proc.stderr or '').strip()}",
+                    model=f"{self.name}-container",
+                )
+
+            container_id = (create_proc.stdout or "").strip()
+            if not container_id:
+                return RunResult(
+                    output_path=output_path,
+                    conversion_time_seconds=round(time.monotonic() - start, 3),
+                    success=False,
+                    error="Failed to create container: empty container id",
+                    model=f"{self.name}-container",
+                )
+
+            if not is_generate:
+                cp_proc = subprocess.run(
+                    ["docker", "cp", str(input_path), f"{container_id}:{_CONTAINER_INPUT}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                if cp_proc.returncode != 0:
+                    return RunResult(
+                        output_path=output_path,
+                        conversion_time_seconds=round(time.monotonic() - start, 3),
+                        success=False,
+                        error=f"Failed to copy input policy into container: {(cp_proc.stderr or '').strip()}",
+                        model=f"{self.name}-container",
+                    )
+
+            start_proc = subprocess.run(
+                ["docker", "start", "-a", container_id],
                 capture_output=True,
                 text=True,
                 timeout=timeout_seconds,
             )
             elapsed = time.monotonic() - start
+
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            cp_out_proc = subprocess.run(
+                ["docker", "cp", f"{container_id}:{_CONTAINER_OUTPUT}", str(output_path)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            has_output = cp_out_proc.returncode == 0 and output_path.is_file()
+            success = start_proc.returncode == 0 and has_output
+
+            out_text = ""
+            if has_output:
+                try:
+                    out_text = output_path.read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError) as exc:
+                    print(f"  Warning: could not read container output: {exc}", file=sys.stderr)
+                    success = False
+                    error = f"Output file exists but is unreadable: {exc}"
+
+            raw_stdout = start_proc.stdout or ""
+            raw_stderr = start_proc.stderr or ""
+            raw_log = (raw_stdout + "\n" + raw_stderr).strip()
+
+            input_tokens = estimate_tokens(container_prompt)
+            output_tokens = estimate_tokens(out_text)
+            cost = round(estimate_cost(input_tokens, output_tokens), 6)
+
+            error = None
+            if not success:
+                if start_proc.returncode != 0:
+                    err_snippet = raw_stderr[:500] if raw_stderr else f"exit code {start_proc.returncode}"
+                    error = f"Container exited {start_proc.returncode}: {err_snippet}"
+                elif not has_output:
+                    cp_snippet = (cp_out_proc.stderr or cp_out_proc.stdout or "").strip()
+                    cp_snippet = cp_snippet[:500] if cp_snippet else "no docker cp output"
+                    error = f"Container exited 0 but no output file was written ({cp_snippet})"
+
+            return RunResult(
+                output_path=output_path,
+                conversion_time_seconds=round(elapsed, 3),
+                success=success,
+                error=error,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost,
+                model=f"{self.name}-container",
+                tokens_estimated=True,
+                raw_log=raw_log[:5000] if raw_log else None,
+            )
         except subprocess.TimeoutExpired:
             return RunResult(
                 output_path=output_path,
                 conversion_time_seconds=time.monotonic() - start,
                 success=False,
-                error=f"Container timed out after {timeout_seconds}s",
+                error="Container operation timed out",
                 model=f"{self.name}-container",
             )
         except Exception as exc:
@@ -145,49 +208,52 @@ class ContainerRunner(ToolRunner):
                 error=f"Container launch failed: {exc}",
                 model=f"{self.name}-container",
             )
+        finally:
+            if container_id:
+                try:
+                    subprocess.run(
+                        ["docker", "rm", "-f", container_id],
+                        capture_output=True,
+                        timeout=10,
+                    )
+                except Exception:
+                    pass  # best-effort cleanup
+            if container_id:
+                subprocess.run(
+                    ["docker", "rm", "-f", container_id],
+                    capture_output=True,
+                    timeout=10,
+                )
 
-        container_output = ws_output_dir / "converted.yaml"
-        has_output = container_output.is_file()
-        success = proc.returncode == 0 and has_output
+    def _missing_required_env_vars(self) -> list[str]:
+        required_by_tool = {
+            "nctl": ["NIRMATA_TOKEN", "NIRMATA_URL"],
+            "claude": ["ANTHROPIC_API_KEY"],
+            "cursor": ["CURSOR_API_KEY"],
+            "codex": ["CODEX_API_KEY"],
+        }
+        required = required_by_tool.get(self.name, [])
+        if not required:
+            return []
 
-        out_text = ""
-        if has_output:
-            try:
-                out_text = container_output.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError) as exc:
-                print(f"  Warning: could not read container output: {exc}", file=sys.stderr)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(container_output, output_path)
+        if not self._env_file.is_file():
+            return required
 
-        raw_stdout = proc.stdout or ""
-        raw_stderr = proc.stderr or ""
-        raw_log = (raw_stdout + "\n" + raw_stderr).strip()
+        found: set[str] = set()
+        try:
+            for line in self._env_file.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                if key in required and value.strip():
+                    found.add(key)
+        except OSError:
+            print(f"  Warning: could not read {self._env_file}: {exc}", file=sys.stderr)
+            return required
 
-        input_tokens = estimate_tokens(container_prompt)
-        output_tokens = estimate_tokens(out_text)
-        cost = round(estimate_cost(input_tokens, output_tokens), 6)
-
-        error = None
-        if not success:
-            if proc.returncode != 0:
-                # Truncate stderr for the error message
-                err_snippet = raw_stderr[:500] if raw_stderr else f"exit code {proc.returncode}"
-                error = f"Container exited {proc.returncode}: {err_snippet}"
-            elif not container_output.is_file():
-                error = "Container exited 0 but no output file was written"
-
-        return RunResult(
-            output_path=output_path,
-            conversion_time_seconds=round(elapsed, 3),
-            success=success,
-            error=error,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cost_usd=cost,
-            model=f"{self.name}-container",
-            tokens_estimated=True,
-            raw_log=raw_log[:5000] if raw_log else None,
-        )
+        return [k for k in required if k not in found]
 
     @staticmethod
     def _rewrite_prompt(prompt: str, input_path: Path | None, output_path: Path) -> str:

@@ -2,6 +2,12 @@
 
 A **public, reproducible benchmark** for converting Kyverno ClusterPolicies to the new Kyverno 1.16+ policy types. Compares **nctl**, **Claude Code**, **Cursor**, or any other AI tool using identical inputs, bare-minimum prompts, containerized isolation, and rigorous validation.
 
+## Leaderboard
+
+Ranked by **pass rate only** — the percentage of tasks that pass all validation layers. No composite scores, no arbitrary weights. This matches how [SWE-bench](https://www.swebench.com/), [HumanEval](https://github.com/openai/human-eval), [Aider](https://aider.chat/docs/leaderboards/), and every other major AI coding benchmark ranks tools.
+
+Speed and cost are reported as supplementary metrics, not factored into ranking. The HTML dashboard includes an accuracy-vs-cost scatter plot for Pareto frontier visualization.
+
 ## Quick Start
 
 ```bash
@@ -113,12 +119,6 @@ Runs `kyverno test` with upstream test resources — real "good" and "bad" Kuber
 ### 3. Expected Kind
 
 Verifies the output kind matches what the dataset specifies (e.g., task says ValidatingPolicy, agent should not produce MutatingPolicy).
-
-## Leaderboard
-
-Ranked by **pass rate only** — the percentage of tasks that pass all validation layers. No composite scores, no arbitrary weights. This matches how [SWE-bench](https://www.swebench.com/), [HumanEval](https://github.com/openai/human-eval), [Aider](https://aider.chat/docs/leaderboards/), and every other major AI coding benchmark ranks tools.
-
-Speed and cost are reported as supplementary metrics, not factored into ranking. The HTML dashboard includes an accuracy-vs-cost scatter plot for Pareto frontier visualization.
 
 ## Folder Layout
 

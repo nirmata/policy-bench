@@ -83,7 +83,7 @@ def _get_runner(
 
     # Explicit script path
     if tool_script:
-        script_path = Path(tool_script)
+        script_path = Path(tool_script).resolve()
         if not script_path.is_file():
             raise FileNotFoundError(f"Tool script not found: {tool_script}")
         return ScriptRunner(tool_name, script_path)

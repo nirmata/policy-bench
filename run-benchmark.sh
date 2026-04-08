@@ -24,6 +24,10 @@ REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 CACHE_DIR="$REPO_ROOT/.cache"
 GO_VALIDATOR="$REPO_ROOT/validate-policy"
 SCHEMA_DIR="$REPO_ROOT/cmd/validate-policy/schemas/openapi/v3"
+PYTHON_BIN="python3"
+if [ -x "$REPO_ROOT/.venv/bin/python3" ]; then
+  PYTHON_BIN="$REPO_ROOT/.venv/bin/python3"
+fi
 
 # nctl version detection (Homebrew formula is the public source for latest version)
 
@@ -63,11 +67,35 @@ check_deps() {
   # Docker only needed for --containerized
   if has_flag "--containerized" "$@"; then
     check_cmd docker "Install Docker Desktop or OrbStack"
+    if docker image inspect benchmark-base >/dev/null 2>&1; then
+      if ! docker run --rm --entrypoint sh benchmark-base -lc 'curl -I -m 8 https://google.com >/dev/null 2>&1' >/dev/null 2>&1; then
+        die "Docker containers do not have outbound network access. Restart Docker Desktop and verify container egress with: docker run --rm --entrypoint sh benchmark-base -lc 'curl -I -m 8 https://google.com'"
+      fi
+    fi
   fi
 
   # kyverno CLI optional but recommended
   if ! command -v kyverno >/dev/null 2>&1; then
     warn "kyverno CLI not found — functional tests will be skipped. Install: brew install kyverno"
+  fi
+
+  # Containerized runs: verify secrets exist for each requested tool
+  if has_flag "--containerized" "$@"; then
+    local secrets_dir="$REPO_ROOT/docker/secrets"
+    local tools_requested=() tool arg
+    # Collect all values after --tool (stop at the next -- flag or end)
+    local capture=false
+    for arg in "$@"; do
+      if [ "$arg" = "--tool" ]; then capture=true; continue; fi
+      if [[ "$arg" == --* ]]; then capture=false; continue; fi
+      $capture && tools_requested+=("$arg")
+    done
+    for tool in "${tools_requested[@]+"${tools_requested[@]}"}"; do
+      local env_file="$secrets_dir/${tool}.env"
+      if [ ! -f "$env_file" ]; then
+        die "Missing credentials for --tool $tool. Create $env_file with required API keys (see README § API Keys). Run 'mkdir -p docker/secrets' first."
+      fi
+    done
   fi
 }
 
@@ -125,20 +153,34 @@ fetch_nctl() {
     *)             arch="amd64" ;;
   esac
 
-  # Get latest version from Homebrew formula (same source the install script uses)
-  local version
-  version=$(curl -fsSL "$HOMEBREW_FORMULA_URL" 2>/dev/null | grep -o 'version "[^"]*"' | head -1 | tr -d '"' | awk '{print $2}')
+  # Get formula once and derive both version and linux URL from it.
+  local formula version url
+  formula=$(curl -fsSL "$HOMEBREW_FORMULA_URL" 2>/dev/null) || die "Failed to fetch formula from $HOMEBREW_FORMULA_URL"
+  version=$(printf "%s" "$formula" | grep -o 'version "[^"]*"' | head -1 | tr -d '"' | awk '{print $2}')
   if [ -z "$version" ]; then
     die "Failed to detect nctl version. Check $HOMEBREW_FORMULA_URL"
   fi
 
-  # Download Linux binary directly (the install script would get the host OS)
-  local url="https://dl.nirmata.io/nctl/v${version}/nctl_${version}_linux_${arch}.zip"
+  # Preferred: exact Linux URL from the formula (avoids path drift on dl.nirmata.io)
+  url=$(printf "%s" "$formula" \
+    | grep -Eo 'https://[^" ]*nctl_[0-9.]+_linux_(amd64|arm64)\.zip' \
+    | grep "linux_${arch}\.zip" \
+    | head -1 || true)
+
+  # Fallbacks for older/newer publication layouts.
+  if [ -z "$url" ]; then
+    url="https://dl.nirmata.io/nctl/nctl_${version}/nctl_${version}_linux_${arch}.zip"
+  fi
   local tmpdir
   tmpdir=$(mktemp -d)
 
   info "Fetching nctl v${version} linux/${arch} from $url"
-  curl -fsSL "$url" -o "$tmpdir/nctl.zip" || die "Failed to download nctl from $url"
+  if ! curl -fsSL "$url" -o "$tmpdir/nctl.zip"; then
+    # Last fallback kept for backward compatibility with legacy paths.
+    local legacy_url="https://dl.nirmata.io/nctl/v${version}/nctl_${version}_linux_${arch}.zip"
+    warn "Primary nctl URL failed, retrying legacy path: $legacy_url"
+    curl -fsSL "$legacy_url" -o "$tmpdir/nctl.zip" || die "Failed to download nctl from $url and $legacy_url"
+  fi
   unzip -q "$tmpdir/nctl.zip" -d "$tmpdir" || die "Failed to extract nctl"
 
   if [ -f "$tmpdir/nctl" ]; then
@@ -199,7 +241,7 @@ sync_dataset() {
   fi
 
   info "Syncing upstream kyverno policies..."
-  python3 "$REPO_ROOT/scripts/sync_kyverno_policies.py"
+  "$PYTHON_BIN" "$REPO_ROOT/scripts/sync_kyverno_policies.py"
 }
 
 # ---------------------------------------------------------------------------
@@ -215,7 +257,7 @@ main() {
   # If just --report, skip builds
   if [ "$#" -eq 1 ] && [ "$1" = "--report" ]; then
     info "[1/1] Generating report..."
-    python3 "$REPO_ROOT/benchmark.py" --report
+    "$PYTHON_BIN" "$REPO_ROOT/benchmark.py" --report
     return
   fi
 
@@ -232,10 +274,10 @@ main() {
   build_docker_images "$@"
 
   info "[5/6] Running benchmark..."
-  python3 "$REPO_ROOT/benchmark.py" "$@"
+  "$PYTHON_BIN" "$REPO_ROOT/benchmark.py" "$@"
 
   info "[6/6] Generating report..."
-  python3 "$REPO_ROOT/benchmark.py" --report
+  "$PYTHON_BIN" "$REPO_ROOT/benchmark.py" --report
 
   echo ""
   echo "  Done."

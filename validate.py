@@ -134,7 +134,6 @@ def main() -> int:
         input_path,
         output_path,
         expected_output_kind=args.expected_kind,
-        use_kubectl=True,
         skip_kyverno_test=args.skip_kyverno_test,
         kyverno_test_dir=kyverno_test_dir if kyverno_test_dir.is_dir() else None,
         task_type=task_type,
@@ -169,6 +168,17 @@ def main() -> int:
     mode_label = "Generation" if is_generate else "Conversion"
     print(f"  {mode_label} validation results")
     print("  " + "-" * 40)
+
+    # Show generated policy identity
+    gen_api = eval_result.get("generated_api_version", "")
+    gen_kind = eval_result.get("generated_kind", "")
+    gen_name = eval_result.get("generated_name", "")
+    if gen_api or gen_kind or gen_name:
+        print(f"  Generated: apiVersion={gen_api}  kind={gen_kind}  name={gen_name}")
+    stage = eval_result.get("validation_stage", "")
+    if stage and stage != "passed":
+        print(f"  Failed at: {stage}")
+
     print(
         f"  1. Schema+CEL  {'PASS' if schema_pass else 'FAIL'}"
         f"  -- valid structure, CEL compiles"

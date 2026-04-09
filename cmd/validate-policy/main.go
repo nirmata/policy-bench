@@ -11,12 +11,13 @@ import (
 )
 
 type Result struct {
-	SchemaPass bool     `json:"schema_pass"`
-	CELPass    bool     `json:"cel_pass"`
-	Errors     []string `json:"errors"`
-	PolicyName string   `json:"policy_name"`
-	PolicyKind string   `json:"policy_kind"`
-	APIVersion string   `json:"api_version"`
+	SchemaPass      bool     `json:"schema_pass"`
+	CELPass         bool     `json:"cel_pass"`
+	Errors          []string `json:"errors"`
+	PolicyName      string   `json:"policy_name"`
+	PolicyKind      string   `json:"policy_kind"`
+	APIVersion      string   `json:"api_version"`
+	ValidationStage string   `json:"validation_stage"`
 }
 
 func main() {
@@ -59,10 +60,11 @@ func main() {
 		APIVersion: apiVersion,
 	}
 
-	schemaPass, celPass, errs := validatePolicy(data)
+	schemaPass, celPass, errs, stage := validatePolicy(data)
 	result.SchemaPass = schemaPass
 	result.CELPass = celPass
 	result.Errors = errs
+	result.ValidationStage = stage
 	if result.Errors == nil {
 		result.Errors = []string{}
 	}

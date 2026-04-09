@@ -74,6 +74,12 @@ def evaluate(
         schema_pass = go_result["schema_pass"] and go_result["cel_pass"]
         schema_errors = list(go_result.get("errors", []))
 
+        # Propagate generated policy identity for diagnostics
+        result["generated_api_version"] = go_result.get("api_version", "")
+        result["generated_kind"] = go_result.get("policy_kind", "")
+        result["generated_name"] = go_result.get("policy_name", "")
+        result["validation_stage"] = go_result.get("validation_stage", "")
+
         if schema_pass and expected_output_kind:
             actual_kind = go_result.get("policy_kind", "")
             allowed = {expected_output_kind}
@@ -86,9 +92,28 @@ def evaluate(
                 )
     else:
         result["validator_used"] = "python_fallback"
-        schema_pass, schema_errors = validate_schema(
+        schema_pass, schema_errors, parsed_doc = validate_schema(
             output_path, expected_kind=expected_output_kind
         )
+        # Extract identity from the already-parsed doc (no re-read)
+        if parsed_doc and isinstance(parsed_doc, dict):
+            result["generated_api_version"] = parsed_doc.get("apiVersion") or ""
+            result["generated_kind"] = parsed_doc.get("kind") or ""
+            result["generated_name"] = (parsed_doc.get("metadata") or {}).get("name") or ""
+        else:
+            result["generated_api_version"] = ""
+            result["generated_kind"] = ""
+            result["generated_name"] = ""
+        # Classify stage based on which schema check failed
+        if schema_pass:
+            result["validation_stage"] = "passed"
+        elif any("Invalid YAML" in e for e in schema_errors):
+            result["validation_stage"] = "yaml_parse"
+        elif any("apiVersion" in e for e in schema_errors):
+            result["validation_stage"] = "schema_lookup"
+        else:
+            result["validation_stage"] = "schema_validation"
+
     result["schema_pass"] = schema_pass
     result["schema_errors"] = schema_errors
 
@@ -103,21 +128,16 @@ def evaluate(
     semantic_skipped = True
 
     if not skip_kyverno_test and kyverno_test_dir:
-        # Reuse Go validator output if available to avoid re-parsing YAML
+        # Reuse Go validator output or parsed doc to avoid re-reading YAML
         if go_result is not None:
             output_policy_name = go_result.get("policy_name")
             output_policy_kind = go_result.get("policy_kind", "")
+        elif parsed_doc and isinstance(parsed_doc, dict):
+            output_policy_name = (parsed_doc.get("metadata") or {}).get("name")
+            output_policy_kind = parsed_doc.get("kind", "")
         else:
-            output_doc: dict = {}
-            if yaml:
-                try:
-                    output_doc = yaml.safe_load(
-                        output_path.read_text(encoding="utf-8", errors="replace")
-                    ) or {}
-                except Exception:
-                    output_doc = {}
-            output_policy_name = (output_doc.get("metadata") or {}).get("name")
-            output_policy_kind = output_doc.get("kind", "")
+            output_policy_name = None
+            output_policy_kind = ""
         semantic_pass, semantic_errors, semantic_skipped = run_kyverno_test(
             kyverno_test_dir,
             output_policy_name=output_policy_name,

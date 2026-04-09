@@ -23,6 +23,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import os
 import shutil
@@ -255,6 +256,15 @@ def _run_single(
         functional_ok = semantic_skipped or (semantic is True)
         success = run_result.success and schema_ok and functional_ok
 
+        # Include YAML preview on failure for diagnostics
+        yaml_preview = None
+        if not success and output_path.exists():
+            try:
+                with output_path.open(encoding="utf-8", errors="replace") as fh:
+                    yaml_preview = "".join(itertools.islice(fh, 25))
+            except OSError:
+                pass
+
         timestamp_str = datetime.now(timezone.utc).isoformat()
         last_result = {
             "run_id": f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S_%f')}_{tool_name}_{policy_id}",
@@ -279,12 +289,32 @@ def _run_single(
             "max_attempts": max_attempts,
             **eval_result,
             "error": run_result.error if not run_result.success else None,
+            "yaml_preview": yaml_preview,
         }
 
         if success or attempt == max_attempts:
             break
 
     return last_result
+
+
+def _failure_detail(result: dict) -> str:
+    """Build a short diagnostic suffix for failed runs."""
+    parts: list[str] = []
+    gvk = result.get("generated_kind") or result.get("generated_api_version")
+    if gvk:
+        api = result.get("generated_api_version", "")
+        kind = result.get("generated_kind", "")
+        parts.append(f"got {api}/{kind}" if api else f"got {kind}")
+    stage = result.get("validation_stage")
+    if stage and stage != "passed":
+        parts.append(f"stage={stage}")
+    errs = result.get("schema_errors") or result.get("error")
+    if isinstance(errs, list) and errs:
+        parts.append(errs[0][:80])
+    elif isinstance(errs, str):
+        parts.append(errs[:80])
+    return f"  ({'; '.join(parts)})" if parts else ""
 
 
 def _print_summary(results: list[dict]) -> None:
@@ -445,7 +475,10 @@ def main() -> int:
                 tool_results.append(result)
 
                 status = "PASS" if result.get("success") else "FAIL"
-                lines.append(f"  [{tool_name}] {label} ... {status}")
+                detail = ""
+                if not result.get("success"):
+                    detail = _failure_detail(result)
+                lines.append(f"  [{tool_name}] {label} ... {status}{detail}")
 
                 run_id = result.get("run_id", f"run_{tool_name}_{policy['id']}")
                 out_json = results_dir / f"{run_id}.json"
@@ -476,7 +509,10 @@ def main() -> int:
                     tool_results.append(result)
 
                     status = "PASS" if result.get("success") else "FAIL"
-                    lines.append(f"  [{completed}/{total}] [{tool_name}] {label} ... {status}")
+                    detail = ""
+                    if not result.get("success"):
+                        detail = _failure_detail(result)
+                    lines.append(f"  [{completed}/{total}] [{tool_name}] {label} ... {status}{detail}")
 
                     run_id = result.get("run_id", f"run_{tool_name}_{policy['id']}")
                     out_json = results_dir / f"{run_id}.json"

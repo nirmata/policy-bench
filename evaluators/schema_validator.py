@@ -24,25 +24,27 @@ def validate_schema(
     output_path: Path,
     *,
     expected_kind: str | None = None,
-) -> tuple[bool, list[str]]:
+) -> tuple[bool, list[str], dict | None]:
     """Validate the converted policy file against Kyverno 1.16+ schema.
 
-    Returns (passed, errors). This is the Python fallback — the Go validator
-    (cmd/validate-policy) is preferred and handles schema + CEL compilation.
+    Returns (passed, errors, parsed_doc). This is the Python fallback — the Go
+    validator (cmd/validate-policy) is preferred and handles schema + CEL
+    compilation.  The parsed doc is returned so callers can extract identity
+    fields without re-reading the file.
     """
     errors: list[str] = []
 
     if not yaml:
-        return False, ["PyYAML not installed. pip install pyyaml"]
+        return False, ["PyYAML not installed. pip install pyyaml"], None
 
     try:
         raw = output_path.read_text(encoding="utf-8", errors="replace")
         doc = yaml.safe_load(raw)
     except Exception as exc:
-        return False, [f"Invalid YAML: {exc}"]
+        return False, [f"Invalid YAML: {exc}"], None
 
     if not doc or not isinstance(doc, dict):
-        return False, ["Empty or non-dict YAML"]
+        return False, ["Empty or non-dict YAML"], None
 
     kind = doc.get("kind") or ""
     api_version = doc.get("apiVersion") or ""
@@ -62,4 +64,4 @@ def validate_schema(
             f"Expected apiVersion starting with {POLICIES_APIVERSION_PREFIX!r}, got {api_version!r}"
         )
 
-    return len(errors) == 0, errors
+    return len(errors) == 0, errors, doc

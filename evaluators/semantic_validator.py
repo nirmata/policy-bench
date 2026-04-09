@@ -137,6 +137,14 @@ def run_kyverno_test(
                 False,
             )
 
+    # Preflight: verify policy file exists before running test
+    if policy_under_test and not policy_under_test.exists():
+        return (
+            False,
+            [f"Policy file not found: {policy_under_test}"],
+            False,
+        )
+
     try:
         proc = subprocess.run(
             ["kyverno", "test", str(run_dir)],
@@ -164,8 +172,13 @@ def run_kyverno_test(
                 True,
             )
 
+        # Include policy path and test dir in error for diagnostics
+        preflight = f"[policy={policy_under_test}, test_dir={run_dir}]"
+        if "failed to load" in (out or "").lower() or "error loading" in (out or "").lower():
+            out = f"Policy load failed before test assertions. {preflight}\n{out}"
+
         if not out:
-            out = "kyverno test exited non-zero (no output)"
+            out = f"kyverno test exited non-zero (no output). {preflight}"
         return False, [out], False
     finally:
         if cleanup_dir and cleanup_dir.exists():

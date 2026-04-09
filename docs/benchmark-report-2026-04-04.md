@@ -1,4 +1,4 @@
-# Policy Conversion Benchmark Report
+# Policy as Code Benchmark Report
 
 **Date:** April 3-4, 2026
 **Authors:** Shreyas Mocherla

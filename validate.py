@@ -134,7 +134,6 @@ def main() -> int:
         input_path,
         output_path,
         expected_output_kind=args.expected_kind,
-        use_kubectl=True,
         skip_kyverno_test=args.skip_kyverno_test,
         kyverno_test_dir=kyverno_test_dir if kyverno_test_dir.is_dir() else None,
         task_type=task_type,

@@ -12,6 +12,7 @@ No CLAUDE.md, no memory, no MCP servers, no previous outputs.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -32,6 +33,12 @@ _CONTAINER_INPUT = "/workspace/policy.yaml"
 _CONTAINER_OUTPUT = "/workspace/output/converted.yaml"
 
 _ENV_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_REQUIRED_ENV_BY_TOOL = {
+    "nctl": ["NIRMATA_TOKEN", "NIRMATA_URL"],
+    "claude": ["ANTHROPIC_API_KEY"],
+    "cursor": ["CURSOR_API_KEY"],
+    "codex": ["CODEX_API_KEY"],
+}
 
 
 class ContainerRunner(ToolRunner):
@@ -85,6 +92,14 @@ class ContainerRunner(ToolRunner):
         create_cmd = ["docker", "create", "--network", "host"]
         if self._env_file.is_file():
             create_cmd += ["--env-file", str(self._env_file)]
+
+        # Always forward host env values for required keys when present.
+        # This allows running without docker/secrets/*.env files.
+        for key in _REQUIRED_ENV_BY_TOOL.get(self.name, []):
+            value = os.environ.get(key)
+            if value:
+                create_cmd += ["-e", f"{key}={value}"]
+
         for key, val in config.get("container_env", {}).items():
             if not _ENV_KEY_RE.match(key):
                 raise ValueError(f"Invalid env var name in container_env: {key!r}")
@@ -226,32 +241,24 @@ class ContainerRunner(ToolRunner):
                 )
 
     def _missing_required_env_vars(self) -> list[str]:
-        required_by_tool = {
-            "nctl": ["NIRMATA_TOKEN", "NIRMATA_URL"],
-            "claude": ["ANTHROPIC_API_KEY"],
-            "cursor": ["CURSOR_API_KEY"],
-            "codex": ["CODEX_API_KEY"],
-        }
-        required = required_by_tool.get(self.name, [])
+        required = _REQUIRED_ENV_BY_TOOL.get(self.name, [])
         if not required:
             return []
 
-        if not self._env_file.is_file():
-            return required
+        found: set[str] = {k for k in required if os.environ.get(k)}
 
-        found: set[str] = set()
-        try:
-            for line in self._env_file.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, value = line.split("=", 1)
-                key = key.strip()
-                if key in required and value.strip():
-                    found.add(key)
-        except OSError:
-            print(f"  Warning: could not read {self._env_file}: {exc}", file=sys.stderr)
-            return required
+        if self._env_file.is_file():
+            try:
+                for line in self._env_file.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, value = line.split("=", 1)
+                    key = key.strip()
+                    if key in required and value.strip():
+                        found.add(key)
+            except OSError as exc:
+                print(f"  Warning: could not read {self._env_file}: {exc}", file=sys.stderr)
 
         return [k for k in required if k not in found]
 

@@ -56,6 +56,16 @@ has_flag() {
   return 1
 }
 
+required_env_vars_for_tool() {
+  local tool="$1"
+  case "$tool" in
+    nctl) echo "NIRMATA_TOKEN NIRMATA_URL" ;;
+    claude) echo "ANTHROPIC_API_KEY" ;;
+    cursor) echo "CURSOR_API_KEY" ;;
+    *) echo "" ;;
+  esac
+}
+
 # ---------------------------------------------------------------------------
 # 1. Dependency checks
 # ---------------------------------------------------------------------------
@@ -79,7 +89,7 @@ check_deps() {
     warn "kyverno CLI not found — functional tests will be skipped. Install: brew install kyverno"
   fi
 
-  # Containerized runs: verify secrets exist for each requested tool
+  # Containerized runs: verify credentials exist via env file or shell env vars.
   if has_flag "--containerized" "$@"; then
     local secrets_dir="$REPO_ROOT/docker/secrets"
     local tools_requested=() tool arg
@@ -92,8 +102,24 @@ check_deps() {
     done
     for tool in "${tools_requested[@]+"${tools_requested[@]}"}"; do
       local env_file="$secrets_dir/${tool}.env"
-      if [ ! -f "$env_file" ]; then
-        die "Missing credentials for --tool $tool. Create $env_file with required API keys (see README § API Keys). Run 'mkdir -p docker/secrets' first."
+      local required_vars
+      local missing_vars=()
+      required_vars=$(required_env_vars_for_tool "$tool")
+      if [ -n "$required_vars" ]; then
+        local var_name
+        for var_name in $required_vars; do
+          if [ -f "$env_file" ] && grep -Eq "^[[:space:]]*${var_name}[[:space:]]*=.+" "$env_file"; then
+            continue
+          fi
+          if [ -n "${!var_name:-}" ]; then
+            continue
+          fi
+          missing_vars+=("$var_name")
+        done
+      fi
+
+      if [ ${#missing_vars[@]} -gt 0 ]; then
+        die "Missing credentials for --tool $tool (${missing_vars[*]}). Set them in your shell environment (see README § API Keys)."
       fi
     done
   fi

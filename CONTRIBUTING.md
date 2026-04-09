@@ -56,23 +56,26 @@ python3 scripts/sync_kyverno_policies.py
 
 ### Configuring tool secrets (required for containerized runs)
 
-Each tool reads credentials from a file in `docker/secrets/`. These files are gitignored — never commit them.
+Containerized runs read credentials from shell environment variables.
+
+Set the variables for the tools you plan to run:
 
 ```bash
-# Copy the template
-cp docker/.env.example docker/secrets/nctl.env   # or claude.env, cursor.env, codex.env
+export NIRMATA_TOKEN=...
+export NIRMATA_URL=https://nirmata.io
+export ANTHROPIC_API_KEY=...
+export CURSOR_API_KEY=...
 ```
 
-Fill in the values for the tools you intend to run:
+Required variables by tool:
 
-| File | Required variables |
+| Tool | Required variables |
 |---|---|
-| `docker/secrets/nctl.env` | `NIRMATA_TOKEN`, `NIRMATA_URL` (and optionally AWS vars) |
-| `docker/secrets/claude.env` | `ANTHROPIC_API_KEY` |
-| `docker/secrets/cursor.env` | `CURSOR_API_KEY` |
-| `docker/secrets/codex.env` | `CODEX_API_KEY` |
+| nctl | `NIRMATA_TOKEN`, `NIRMATA_URL` (and optionally AWS vars) |
+| claude | `ANTHROPIC_API_KEY` |
+| cursor | `CURSOR_API_KEY` |
 
-If a secrets file is missing, the corresponding tool's container will start but fail immediately on the first API call. Running without `--containerized` uses the tool already installed on your machine and reads credentials from your shell environment instead.
+If required credentials are missing for a selected tool, preflight checks fail before launching containers.
 
 ---
 

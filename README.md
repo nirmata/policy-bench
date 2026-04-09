@@ -45,24 +45,13 @@ The script handles dependency checks, Go validator compilation, Docker image bui
 
 ### API Keys
 
-For containerized runs, place API keys in `docker/secrets/` (gitignored):
+For containerized runs, export credentials in your shell:
 
 ```bash
-# docker/secrets/nctl.env
-cat > docker/secrets/nctl.env <<'EOF'
-NIRMATA_TOKEN=your-token
-NIRMATA_URL=https://your-instance.nirmata.co
-EOF
-
-# docker/secrets/claude.env
-cat > docker/secrets/claude.env <<'EOF'
-ANTHROPIC_API_KEY=sk-ant-...
-EOF
-
-# docker/secrets/cursor.env
-cat > docker/secrets/cursor.env <<'EOF'
-CURSOR_API_KEY=crsr_...
-EOF
+export NIRMATA_TOKEN=...
+export NIRMATA_URL=https://nirmata.io
+export ANTHROPIC_API_KEY=...
+export CURSOR_API_KEY=...
 ```
 
 ## How It Works

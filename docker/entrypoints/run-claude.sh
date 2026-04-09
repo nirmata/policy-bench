@@ -13,7 +13,10 @@ fi
 
 cd /workspace
 
+# No --output-format json: let the agent stream its activity (tool calls,
+# reasoning, file writes) to stdout/stderr in real time so operators can
+# monitor progress via `docker logs -f <container>`.  The ContainerRunner
+# extracts the output file via `docker cp`, not from stdout.
 exec claude -p "$PROMPT" \
   --dangerously-skip-permissions \
-  --output-format json \
   --model "${CLAUDE_MODEL:-sonnet}"

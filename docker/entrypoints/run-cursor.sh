@@ -25,8 +25,10 @@ export PATH="$HOME/.local/bin:$HOME/.cursor/bin:$PATH"
 
 cd /workspace
 
+# No --output-format json: let the agent stream its activity to stdout/stderr
+# in real time so operators can monitor via `docker logs -f <container>`.
+# The ContainerRunner extracts the output file via `docker cp`, not stdout.
 timeout --kill-after=10 "$TIMEOUT" cursor-agent --api-key "$CURSOR_API_KEY" -p --force \
-  --output-format json \
   --model "${CURSOR_MODEL:-claude-4.6-sonnet-medium}" \
   "$PROMPT" || {
   code=$?

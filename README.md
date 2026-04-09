@@ -43,6 +43,79 @@ The script handles dependency checks, Go validator compilation, Docker image bui
 | kyverno CLI | Functional testing | Recommended (`brew install kyverno`) |
 | PyYAML + Jinja2 | Reports | `pip install -r requirements.txt` |
 
+### Install nctl
+
+nctl is the Nirmata CLI used to run the Nirmata Platform Assistant benchmark tool.
+
+**Homebrew (macOS):**
+
+```bash
+brew tap nirmata/tap
+brew install nctl
+```
+
+**Binary download (Linux/macOS/Windows):**
+
+```bash
+export NCTL_VERSION=4.7.10
+
+# macOS ARM
+curl -LO https://dl.nirmata.io/nctl/nctl_${NCTL_VERSION}/nctl_${NCTL_VERSION}_macos_arm64.zip
+
+# macOS x86
+curl -LO https://dl.nirmata.io/nctl/nctl_${NCTL_VERSION}/nctl_${NCTL_VERSION}_macos_amd64.zip
+
+# Linux ARM
+curl -LO https://dl.nirmata.io/nctl/nctl_${NCTL_VERSION}/nctl_${NCTL_VERSION}_linux_arm64.zip
+
+# Linux x86
+curl -LO https://dl.nirmata.io/nctl/nctl_${NCTL_VERSION}/nctl_${NCTL_VERSION}_linux_amd64.zip
+```
+
+Then extract and install:
+
+```bash
+unzip nctl_${NCTL_VERSION}_<platform>.zip
+chmod u+x nctl
+sudo mv nctl /usr/local/bin/nctl
+```
+
+Verify the installation:
+
+```bash
+nctl version
+```
+
+For more details, see the [nctl installation docs](https://docs.nirmata.io/docs/nctl/installation/).
+
+### Sign Up for Nirmata
+
+To use nctl with the Nirmata Platform Assistant, you need a Nirmata account.
+
+**Sign up via the web:**
+
+Visit [nirmata.io/security/login.html](https://nirmata.io/security/login.html) to create your account.
+
+**Or sign up via the CLI:**
+
+```bash
+nctl signup --email name@company.com --password <your-password>
+```
+
+See the [nctl signup docs](https://docs.nirmata.io/docs/nctl/commands/nctl_signup/) for more options.
+
+**Log in to authenticate:**
+
+After signing up, log in to obtain your API credentials:
+
+```bash
+nctl login --url https://nirmata.io --token <your-api-token>
+```
+
+You can also authenticate using environment variables (`NIRMATA_TOKEN` and `NIRMATA_URL`). See the [nctl login docs](https://docs.nirmata.io/docs/nctl/commands/nctl_login/) for details.
+
+You will need these credentials to configure the benchmark (see API Keys below).
+
 ### API Keys
 
 For containerized runs, place API keys in `docker/secrets/` (gitignored):
@@ -51,7 +124,7 @@ For containerized runs, place API keys in `docker/secrets/` (gitignored):
 # docker/secrets/nctl.env
 cat > docker/secrets/nctl.env <<'EOF'
 NIRMATA_TOKEN=your-token
-NIRMATA_URL=https://your-instance.nirmata.co
+NIRMATA_URL=https://nirmata.io
 EOF
 
 # docker/secrets/claude.env

@@ -49,14 +49,20 @@ For containerized runs, place API keys in `docker/secrets/` (gitignored):
 
 ```bash
 # docker/secrets/nctl.env
+cat > docker/secrets/nctl.env <<'EOF'
 NIRMATA_TOKEN=your-token
 NIRMATA_URL=https://your-instance.nirmata.co
+EOF
 
 # docker/secrets/claude.env
+cat > docker/secrets/claude.env <<'EOF'
 ANTHROPIC_API_KEY=sk-ant-...
+EOF
 
 # docker/secrets/cursor.env
+cat > docker/secrets/cursor.env <<'EOF'
 CURSOR_API_KEY=crsr_...
+EOF
 ```
 
 ## How It Works

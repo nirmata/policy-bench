@@ -294,6 +294,7 @@ def _run_single(
             **eval_result,
             "error": run_result.error if not run_result.success else None,
             "yaml_preview": yaml_preview,
+            "raw_log": run_result.raw_log,
         }
 
         if success or attempt == max_attempts:
@@ -459,7 +460,10 @@ def main() -> int:
         """Run all jobs for a single tool. Returns (results, log_lines)."""
         tcfg = tool_configs.get(tool_name, {})
         workers_label = f", {num_workers} workers" if num_workers > 1 else ""
-        lines: list[str] = [f"\n--- Running {tool_name}{workers_label} ---"]
+        # Print the header live so it appears before the container_runner's
+        # tee'd output, not buffered with the per-policy status lines.
+        print(f"\n--- Running {tool_name}{workers_label} ---", flush=True)
+        lines: list[str] = []
 
         def _execute_job(policy: dict) -> dict:
             return _run_single(

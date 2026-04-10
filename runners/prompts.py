@@ -15,44 +15,44 @@ from __future__ import annotations
 
 _CONVERSION_PROMPTS: dict[tuple[str, str | None], str] = {
     ("cluster-policy", "ValidatingPolicy"): (
-        "Convert the Kyverno ClusterPolicy in {input_path} to a "
-        "ValidatingPolicy.{description_clause} Write the converted policy "
-        "to {output_path}."
+        "Convert the Kyverno ClusterPolicy in {input_path} to a Kyverno 1.16+ "
+        "ValidatingPolicy (apiVersion: policies.kyverno.io/v1)."
+        "{description_clause} Write the converted policy to {output_path}."
     ),
     ("cluster-policy", "MutatingPolicy"): (
-        "Convert the Kyverno ClusterPolicy in {input_path} to a "
-        "MutatingPolicy.{description_clause} Write the converted policy "
-        "to {output_path}."
+        "Convert the Kyverno ClusterPolicy in {input_path} to a Kyverno 1.16+ "
+        "MutatingPolicy (apiVersion: policies.kyverno.io/v1)."
+        "{description_clause} Write the converted policy to {output_path}."
     ),
     ("cluster-policy", "GeneratingPolicy"): (
-        "Convert the Kyverno ClusterPolicy in {input_path} to a "
-        "GeneratingPolicy.{description_clause} Write the converted policy "
-        "to {output_path}."
+        "Convert the Kyverno ClusterPolicy in {input_path} to a Kyverno 1.16+ "
+        "GeneratingPolicy (apiVersion: policies.kyverno.io/v1)."
+        "{description_clause} Write the converted policy to {output_path}."
     ),
     ("cluster-policy", "ImageValidatingPolicy"): (
-        "Convert the Kyverno ClusterPolicy in {input_path} to an "
-        "ImageValidatingPolicy.{description_clause} Write the converted policy "
-        "to {output_path}."
+        "Convert the Kyverno ClusterPolicy in {input_path} to a Kyverno 1.16+ "
+        "ImageValidatingPolicy (apiVersion: policies.kyverno.io/v1)."
+        "{description_clause} Write the converted policy to {output_path}."
     ),
     ("gatekeeper", None): (
-        "Convert the Gatekeeper policy in {input_path} to a Kyverno "
-        "ValidatingPolicy.{description_clause} Write the converted policy "
-        "to {output_path}."
+        "Convert the Gatekeeper policy in {input_path} to a Kyverno 1.16+ "
+        "ValidatingPolicy (apiVersion: policies.kyverno.io/v1)."
+        "{description_clause} Write the converted policy to {output_path}."
     ),
     ("opa", None): (
-        "Convert the OPA/Rego policy in {input_path} to a Kyverno "
-        "ValidatingPolicy.{description_clause} Write the converted policy "
-        "to {output_path}."
+        "Convert the OPA/Rego policy in {input_path} to a Kyverno 1.16+ "
+        "ValidatingPolicy (apiVersion: policies.kyverno.io/v1)."
+        "{description_clause} Write the converted policy to {output_path}."
     ),
     ("sentinel", None): (
-        "Convert the HashiCorp Sentinel policy in {input_path} to a Kyverno "
-        "ValidatingPolicy.{description_clause} Write the converted policy "
-        "to {output_path}."
+        "Convert the HashiCorp Sentinel policy in {input_path} to a Kyverno 1.16+ "
+        "ValidatingPolicy (apiVersion: policies.kyverno.io/v1)."
+        "{description_clause} Write the converted policy to {output_path}."
     ),
     ("cleanup", None): (
-        "Convert the Kyverno CleanupPolicy in {input_path} to a "
-        "DeletingPolicy.{description_clause} Write the converted policy "
-        "to {output_path}."
+        "Convert the Kyverno CleanupPolicy in {input_path} to a Kyverno 1.16+ "
+        "DeletingPolicy (apiVersion: policies.kyverno.io/v1)."
+        "{description_clause} Write the converted policy to {output_path}."
     ),
 }
 
@@ -70,8 +70,8 @@ PROMPTS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 _GENERATION_PROMPT = (
-    "Write a Kyverno {output_kind} that {description} "
-    "Write the policy to {output_path}."
+    "Write a Kyverno 1.16+ {output_kind} (apiVersion: policies.kyverno.io/v1) "
+    "that {description} Write the policy to {output_path}."
 )
 
 

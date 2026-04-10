@@ -21,21 +21,9 @@ RUN apt-get update \
 # NOTE: No version pin — rebuild the image to get a new version.
 RUN npm install -g @anthropic-ai/claude-code
 
-# Install public Kyverno skills — these are open-source and available to any tool,
-# providing baseline domain knowledge parity with nctl's built-in skills.
-# This is NOT "zero custom config" — it is a deliberate leveling of domain knowledge.
-# Source: https://github.com/christian-dussol-cloud-native/kyverno/tree/main/skills
-RUN mkdir -p /tmp/kyverno-skills \
-    && curl -fsSL https://github.com/christian-dussol-cloud-native/kyverno/archive/refs/heads/main.tar.gz \
-       | tar xz --strip-components=2 -C /tmp/kyverno-skills kyverno-main/skills/
-
 COPY entrypoints/run-claude.sh /entrypoints/run-claude.sh
 RUN chmod +x /entrypoints/run-claude.sh
 
 USER benchmark
-
-# Place skills at user level so Claude Code discovers them in any workspace.
-RUN mkdir -p /home/benchmark/.claude/skills \
-    && cp -r /tmp/kyverno-skills/kyverno-policy-generator /home/benchmark/.claude/skills/
 
 ENTRYPOINT ["/entrypoints/run-claude.sh"]

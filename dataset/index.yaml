@@ -273,3 +273,78 @@ policies:
   kyverno_test_dir: imported/kyverno-tests/cp_kasten_generate_by_label
   description: generates a Kasten policy for a new namespace that includes a valid "dataprotection" label, if the policy does
     not already exist
+- id: gen_require_labels
+  track: cluster-policy
+  task_type: generate
+  difficulty: easy
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: imported/kyverno-tests/cp_require_labels
+  description: requires all Pods to have the label 'app.kubernetes.io/name' set to a non-empty value. Deny admission if the
+    label is missing or empty.
+- id: gen_disallow_privileged
+  track: cluster-policy
+  task_type: generate
+  difficulty: easy
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: imported/kyverno-tests/cp_disallow_privileged
+  description: denies any Pod, Deployment, or CronJob whose containers, initContainers, or ephemeralContainers set securityContext.privileged
+    to true.
+- id: gen_restrict_registries
+  track: cluster-policy
+  task_type: generate
+  difficulty: easy
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: imported/kyverno-tests/cp_restrict_image_registries
+  description: only allows Pod container images that begin with the prefix 'eu.foo.io/' or 'bar.io/'. Deny any Pod whose containers
+    use images from any other registry.
+- id: gen_require_resource_limits
+  track: cluster-policy
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: imported/kyverno-tests/cp_require_resource_limits
+  description: requires every container in a Pod to set spec.containers[].resources.requests.memory, spec.containers[].resources.requests.cpu,
+    and spec.containers[].resources.limits.memory. Deny admission if any container is missing any of these three fields. CPU
+    limit is NOT required.
+- id: gen_disallow_host_namespaces
+  track: cluster-policy
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: imported/kyverno-tests/cp_disallow_host_namespaces
+  description: denies Pods, Deployments, and CronJobs that set spec.hostNetwork, spec.hostPID, or spec.hostIPC to true. All
+    three host namespace fields must be checked.
+- id: gen_disallow_host_path
+  track: cluster-policy
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: imported/kyverno-tests/gen_disallow_host_path
+  description: denies Pods, Deployments, and CronJobs that use any hostPath volume. The check must reject any volume in spec.volumes
+    whose hostPath field is set, regardless of the hostPath value.
+- id: gen_disallow_capabilities
+  track: cluster-policy
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: imported/kyverno-tests/gen_disallow_capabilities
+  description: denies Pods, Deployments, and CronJobs whose containers, initContainers, or ephemeralContainers add any Linux
+    capability via securityContext.capabilities.add beyond the Pod Security Standards baseline allow-list (AUDIT_WRITE, CHOWN,
+    DAC_OVERRIDE, FOWNER, FSETID, KILL, MKNOD, NET_BIND_SERVICE, SETFCAP, SETGID, SETPCAP, SETUID, SYS_CHROOT).
+- id: gen_add_default_labels
+  track: cluster-policy
+  task_type: generate
+  difficulty: easy
+  expected_output_kind: MutatingPolicy
+  kyverno_test_dir: imported/kyverno-tests/cp_add_default_labels
+  description: 'mutates Pods and Services to add the label ''foo: bar'' to metadata.labels. The label must be added if absent
+    and left unchanged if already present.'
+- id: gen_create_networkpolicy
+  track: cluster-policy
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: GeneratingPolicy
+  kyverno_test_dir: imported/kyverno-tests/gen_create_networkpolicy
+  description: generates a NetworkPolicy named 'default-deny' in any newly-created Namespace. The generated NetworkPolicy
+    must select all Pods (empty podSelector), include both 'Ingress' and 'Egress' policyTypes, and define no ingress or egress
+    rules so all traffic is denied by default.

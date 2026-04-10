@@ -162,3 +162,23 @@ policies:
   - id: cp_kasten_generate_by_label
     upstream_path: kasten/kasten-generate-policy-by-preset-label/kasten-generate-policy-by-preset-label.yaml
     sync_test: true
+
+  # =====================================================================
+  # Generation tasks — upstream tests reused as functional verification
+  # for natural-language → policy generation. The dataset entries with
+  # task_type=generate point at these test directories so the LLM is
+  # asked to author a policy whose behavior matches what the upstream
+  # test fixtures verify.
+  # =====================================================================
+
+  - id: gen_create_networkpolicy
+    upstream_path: best-practices-gpol/add-network-policy/add-network-policy.yaml
+    sync_test: true
+
+  - id: gen_disallow_host_path
+    upstream_path: pod-security/baseline/disallow-host-path/disallow-host-path.yaml
+    sync_test: true
+
+  - id: gen_disallow_capabilities
+    upstream_path: pod-security/baseline/disallow-capabilities/disallow-capabilities.yaml
+    sync_test: true

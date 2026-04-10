@@ -273,3 +273,69 @@ policies:
   kyverno_test_dir: imported/kyverno-tests/cp_kasten_generate_by_label
   description: generates a Kasten policy for a new namespace that includes a valid "dataprotection" label, if the policy does
     not already exist
+- id: gen_require_labels
+  track: cluster-policy
+  task_type: generate
+  difficulty: easy
+  expected_output_kind: ValidatingPolicy
+  description: requires all Pods to have the label 'app.kubernetes.io/name' set to a non-empty value. Deny admission if the
+    label is missing or empty.
+- id: gen_disallow_privileged
+  track: cluster-policy
+  task_type: generate
+  difficulty: easy
+  expected_output_kind: ValidatingPolicy
+  description: denies any Pod with securityContext.privileged set to true on any container.
+- id: gen_restrict_registries
+  track: cluster-policy
+  task_type: generate
+  difficulty: easy
+  expected_output_kind: ValidatingPolicy
+  description: only allows container images from 'gcr.io/' and 'docker.io/library/' registries. Deny any image from other
+    registries.
+- id: gen_require_resource_limits
+  track: cluster-policy
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  description: requires CPU and memory limits on all containers, including initContainers, in Pods. Deny admission if any
+    container is missing limits.
+- id: gen_disallow_host_namespaces
+  track: cluster-policy
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  description: denies Pods that use hostNetwork, hostPID, or hostIPC. All three must be checked.
+- id: gen_restrict_volume_types
+  track: cluster-policy
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  description: 'only allows these volume types: emptyDir, configMap, secret, projected, downwardAPI, and persistentVolumeClaim.
+    Deny any Pod with other volume types like hostPath.'
+- id: gen_pod_security_baseline
+  track: cluster-policy
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  description: 'implements multiple Pod Security Standards baseline checks in a single policy: disallow privileged containers,
+    disallow hostPID/hostIPC/hostNetwork, require non-root containers, and drop ALL capabilities.'
+- id: gen_add_default_labels
+  track: cluster-policy
+  task_type: generate
+  difficulty: easy
+  expected_output_kind: MutatingPolicy
+  description: 'adds the label ''managed-by: kyverno'' to all new Deployments that do not already have it.'
+- id: gen_inject_sidecar
+  track: cluster-policy
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: MutatingPolicy
+  description: 'injects an Envoy sidecar container (image: envoyproxy/envoy:v1.28, port 9901) into any Pod that has the annotation
+    ''inject-sidecar: true''.'
+- id: gen_create_networkpolicy
+  track: cluster-policy
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: GeneratingPolicy
+  description: generates a default-deny NetworkPolicy (deny all ingress and egress) whenever a new Namespace is created.

@@ -207,13 +207,17 @@ def _run_single(
             prompt = base_prompt
 
         # Augment prompt on retry with previous errors (only latest attempt)
-        if attempt > 1 and last_result.get("schema_errors"):
-            prev_errs = last_result.get("schema_errors", [])
-            prompt += (
-                "\n\nThe previous attempt had these errors:\n"
-                + "\n".join(f"- {e}" for e in prev_errs)
-                + "\nPlease fix them."
+        if attempt > 1:
+            prev_errs = (
+                last_result.get("expected_kind_errors", [])
+                + last_result.get("schema_errors", [])
             )
+            if prev_errs:
+                prompt += (
+                    "\n\nThe previous attempt had these errors:\n"
+                    + "\n".join(f"- {e}" for e in prev_errs)
+                    + "\nPlease fix them."
+                )
 
         run_result: RunResult = runner.run(
             input_path or output_path,
@@ -309,7 +313,11 @@ def _failure_detail(result: dict) -> str:
     stage = result.get("validation_stage")
     if stage and stage != "passed":
         parts.append(f"stage={stage}")
-    errs = result.get("schema_errors") or result.get("error")
+    errs = (
+        result.get("expected_kind_errors")
+        or result.get("schema_errors")
+        or result.get("error")
+    )
     if isinstance(errs, list) and errs:
         parts.append(errs[0][:80])
     elif isinstance(errs, str):

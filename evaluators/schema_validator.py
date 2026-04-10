@@ -22,8 +22,6 @@ POLICIES_APIVERSION_PREFIX = "policies.kyverno.io/"
 
 def validate_schema(
     output_path: Path,
-    *,
-    expected_kind: str | None = None,
 ) -> tuple[bool, list[str], dict | None]:
     """Validate the converted policy file against Kyverno 1.16+ schema.
 
@@ -31,6 +29,10 @@ def validate_schema(
     validator (cmd/validate-policy) is preferred and handles schema + CEL
     compilation.  The parsed doc is returned so callers can extract identity
     fields without re-reading the file.
+
+    Note: expected-kind checking is handled earlier in evaluate() as a
+    separate fail-fast step, so this only validates against the full set
+    of known policy kinds.
     """
     errors: list[str] = []
 
@@ -49,15 +51,9 @@ def validate_schema(
     kind = doc.get("kind") or ""
     api_version = doc.get("apiVersion") or ""
 
-    allowed_kinds = VALIDATING_POLICY_KINDS
-    if expected_kind:
-        allowed_kinds = {expected_kind}
-        if expected_kind == "DeletingPolicy":
-            allowed_kinds.add("NamespacedDeletingPolicy")
-
-    if kind not in allowed_kinds:
+    if kind not in VALIDATING_POLICY_KINDS:
         errors.append(
-            f"Expected kind in {sorted(allowed_kinds)}, got {kind!r}"
+            f"Expected kind in {sorted(VALIDATING_POLICY_KINDS)}, got {kind!r}"
         )
     if not api_version.startswith(POLICIES_APIVERSION_PREFIX):
         errors.append(

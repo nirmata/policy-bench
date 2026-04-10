@@ -4,8 +4,8 @@ Validate a converted or generated policy.
 
 Three modes:
   1. **Input-only** — validate a source policy before converting.
-  2. **Conversion** (input + output) — schema + CEL + functional test.
-  3. **Generation / output-only** (output only, no input) — schema + CEL.
+  2. **Conversion** (input + output) — expected kind + schema + CEL + functional test.
+  3. **Generation / output-only** (output only, no input) — expected kind + schema + CEL.
 
 Usage:
   # Validate input policy only:
@@ -158,6 +158,9 @@ def main() -> int:
     out_json.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
     # --- Pretty summary ---
+    kind_pass = eval_result.get("expected_kind_pass", True)
+    kind_skipped = eval_result.get("expected_kind_skipped", True)
+    kind_errors = eval_result.get("expected_kind_errors", [])
     schema_pass = eval_result["schema_pass"]
     semantic_pass = eval_result.get("semantic_pass")
     semantic_skipped = eval_result.get("semantic_skipped", True)
@@ -179,19 +182,38 @@ def main() -> int:
     if stage and stage != "passed":
         print(f"  Failed at: {stage}")
 
-    print(
-        f"  1. Schema+CEL  {'PASS' if schema_pass else 'FAIL'}"
-        f"  -- valid structure, CEL compiles"
-    )
-    for e in schema_errors:
-        print(f"      - {e}")
+    step = 0
 
-    if semantic_skipped:
-        reason = semantic_errors[0] if semantic_errors else "no test dir or kyverno CLI not on PATH"
-        print(f"  2. Functional  SKIP  -- {reason}")
+    # Expected kind (only shown when --expected-kind was provided)
+    if not kind_skipped:
+        step += 1
+        print(
+            f"  {step}. Expected Kind  {'PASS' if kind_pass else 'FAIL'}"
+            f"  -- output kind matches {args.expected_kind}"
+        )
+        for e in kind_errors:
+            print(f"      - {e}")
+
+    schema_skipped = not kind_pass
+
+    step += 1
+    if schema_skipped:
+        print(f"  {step}. Schema+CEL     SKIP  -- expected kind failed")
     else:
         print(
-            f"  2. Functional  {'PASS' if semantic_pass else 'FAIL'}"
+            f"  {step}. Schema+CEL     {'PASS' if schema_pass else 'FAIL'}"
+            f"  -- valid structure, CEL compiles"
+        )
+        for e in schema_errors:
+            print(f"      - {e}")
+
+    step += 1
+    if semantic_skipped:
+        reason = semantic_errors[0] if semantic_errors else "no test dir or kyverno CLI not on PATH"
+        print(f"  {step}. Functional     SKIP  -- {reason}")
+    else:
+        print(
+            f"  {step}. Functional     {'PASS' if semantic_pass else 'FAIL'}"
             f"  -- kyverno test (policy behavior)"
         )
         for e in semantic_errors:
@@ -203,7 +225,7 @@ def main() -> int:
     print(f"  Results: {out_json}")
     print()
 
-    all_pass = schema_pass and (semantic_skipped or semantic_pass)
+    all_pass = kind_pass and schema_pass and (semantic_skipped or semantic_pass)
     return 0 if all_pass else 1
 
 

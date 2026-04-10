@@ -32,18 +32,9 @@ RUN mkdir -p /home/benchmark/.cursor/projects/workspace \
 }
 EOF
 
-# Install public Kyverno skills for fair benchmarking (parity with nctl built-in skills).
-# Source: https://github.com/christian-dussol-cloud-native/kyverno/tree/main/skills
-# Placed at ~/.cursor/skills/ so cursor-agent discovers them natively (Cursor 2.4+).
 USER root
-RUN mkdir -p /tmp/kyverno-skills \
-    && curl -fsSL https://github.com/christian-dussol-cloud-native/kyverno/archive/refs/heads/main.tar.gz \
-       | tar xz --strip-components=2 -C /tmp/kyverno-skills kyverno-main/skills/
-
 COPY entrypoints/run-cursor.sh /entrypoints/run-cursor.sh
 RUN chmod +x /entrypoints/run-cursor.sh
 
 USER benchmark
-RUN mkdir -p /home/benchmark/.cursor/skills \
-    && cp -r /tmp/kyverno-skills/kyverno-policy-generator /home/benchmark/.cursor/skills/
 ENTRYPOINT ["/entrypoints/run-cursor.sh"]

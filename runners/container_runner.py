@@ -16,8 +16,10 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
+from typing import IO
 
 from .base import (
     RunResult,
@@ -27,6 +29,33 @@ from .base import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Serializes tee'd stream writes so concurrent workers don't interleave mid-line.
+_STREAM_LOCK = threading.Lock()
+
+
+def _tee_stream(src: IO[str], buf: list[str], dst: IO[str], prefix: str) -> None:
+    """Read lines from ``src``, append to ``buf``, and echo to ``dst`` live.
+
+    Used to make ``docker start -a`` output visible in the benchmark terminal
+    as it arrives, instead of buffering until the container exits. The full
+    captured text is still available via ``"".join(buf)`` for ``raw_log``.
+    """
+    try:
+        for line in iter(src.readline, ""):
+            buf.append(line)
+            with _STREAM_LOCK:
+                try:
+                    dst.write(f"{prefix}{line}")
+                    dst.flush()
+                except (OSError, ValueError):
+                    # Terminal closed or dst unwritable — keep capturing to buf.
+                    pass
+    finally:
+        try:
+            src.close()
+        except (OSError, ValueError):
+            pass
 
 # Container paths (what the agent sees inside the container)
 _CONTAINER_INPUT = "/workspace/policy.yaml"
@@ -138,12 +167,45 @@ class ContainerRunner(ToolRunner):
                         model=f"{self.name}-container",
                     )
 
-            start_proc = subprocess.run(
+            # Use Popen + tee threads so container stdout/stderr are visible
+            # in the benchmark terminal in real time (the agent streams tool
+            # calls, reasoning, and file writes). `raw_log` is still captured
+            # in full from the buffers below.
+            label = f"[{self.name}/{input_path.stem}] "
+            stdout_buf: list[str] = []
+            stderr_buf: list[str] = []
+
+            start_proc = subprocess.Popen(
                 ["docker", "start", "-a", container_id],
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=timeout_seconds,
+                bufsize=1,  # line-buffered
             )
+            t_out = threading.Thread(
+                target=_tee_stream,
+                args=(start_proc.stdout, stdout_buf, sys.stdout, label),
+                daemon=True,
+            )
+            t_err = threading.Thread(
+                target=_tee_stream,
+                args=(start_proc.stderr, stderr_buf, sys.stderr, label),
+                daemon=True,
+            )
+            t_out.start()
+            t_err.start()
+
+            try:
+                start_proc.wait(timeout=timeout_seconds)
+            except subprocess.TimeoutExpired:
+                start_proc.kill()
+                start_proc.wait()
+                t_out.join(timeout=2)
+                t_err.join(timeout=2)
+                raise
+
+            t_out.join(timeout=2)
+            t_err.join(timeout=2)
             elapsed = time.monotonic() - start
 
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -166,8 +228,8 @@ class ContainerRunner(ToolRunner):
                     success = False
                     error = f"Output file exists but is unreadable: {exc}"
 
-            raw_stdout = start_proc.stdout or ""
-            raw_stderr = start_proc.stderr or ""
+            raw_stdout = "".join(stdout_buf)
+            raw_stderr = "".join(stderr_buf)
             raw_log = (raw_stdout + "\n" + raw_stderr).strip()
 
             input_tokens = estimate_tokens(container_prompt)
@@ -177,7 +239,11 @@ class ContainerRunner(ToolRunner):
             error = None
             if not success:
                 if start_proc.returncode != 0:
-                    err_snippet = raw_stderr[:500] if raw_stderr else f"exit code {start_proc.returncode}"
+                    # Some CLIs (e.g. Claude Code in -p mode) print fatal
+                    # errors on stdout, not stderr. Prefer stderr, fall back
+                    # to stdout so the message isn't lost.
+                    err_source = raw_stderr or raw_stdout
+                    err_snippet = err_source.strip()[:500] if err_source else f"exit code {start_proc.returncode}"
                     error = f"Container exited {start_proc.returncode}: {err_snippet}"
                 elif not has_output:
                     cp_snippet = (cp_out_proc.stderr or cp_out_proc.stdout or "").strip()

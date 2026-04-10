@@ -57,15 +57,67 @@ def evaluate(
 ) -> dict:
     """Run evaluation and return a results dict.
 
-    Three layers:
-      1. Schema + CEL (Go validator preferred, Python fallback)
-      2. Structural lint (catches common MutatingPolicy issues)
-      3. Functional test (kyverno test with real resources)
+    Four layers (in order):
+      1. Expected kind (cheap fail-fast — skipped when not specified)
+      2. Schema + CEL (Go validator preferred, Python fallback)
+      3. Structural lint (catches common MutatingPolicy issues)
+      4. Functional test (kyverno test with real resources)
 
-    Keys: schema_pass, schema_errors, lint_pass, lint_warnings,
+    Keys: expected_kind_pass, expected_kind_errors, expected_kind_skipped,
+          schema_pass, schema_errors, lint_pass, lint_warnings,
           semantic_pass, semantic_errors, semantic_skipped, validator_used.
     """
     result: dict = {}
+
+    # --- Expected kind (cheapest possible fail-fast check) ---
+    kind_pass = True
+    kind_errors: list[str] = []
+    kind_skipped = expected_output_kind is None
+
+    if expected_output_kind and yaml:
+        try:
+            raw = output_path.read_text(encoding="utf-8", errors="replace")
+            doc = yaml.safe_load(raw)
+            if isinstance(doc, dict):
+                actual_kind = doc.get("kind", "")
+                allowed = {expected_output_kind}
+                if expected_output_kind == "DeletingPolicy":
+                    allowed.add("NamespacedDeletingPolicy")
+                if actual_kind not in allowed:
+                    kind_pass = False
+                    kind_errors.append(
+                        f"Expected kind {sorted(allowed)}, got {actual_kind!r}"
+                    )
+                    # Populate identity for diagnostics on the early-return path;
+                    # on the happy path the downstream validator sets these.
+                    result["generated_api_version"] = doc.get("apiVersion") or ""
+                    result["generated_kind"] = actual_kind
+                    result["generated_name"] = (doc.get("metadata") or {}).get("name") or ""
+            else:
+                kind_pass = False
+                kind_errors.append("Output is not a YAML mapping")
+        except Exception as exc:
+            kind_pass = False
+            kind_errors.append(f"Failed to parse YAML for kind check: {exc}")
+
+    result["expected_kind_pass"] = kind_pass
+    result["expected_kind_errors"] = kind_errors
+    result["expected_kind_skipped"] = kind_skipped
+
+    if not kind_pass:
+        result["validation_stage"] = "expected_kind"
+        result.setdefault("generated_api_version", "")
+        result.setdefault("generated_kind", "")
+        result.setdefault("generated_name", "")
+        result["schema_pass"] = False
+        result["schema_errors"] = []
+        result["validator_used"] = "skipped"
+        result["lint_pass"] = None
+        result["lint_warnings"] = []
+        result["semantic_pass"] = None
+        result["semantic_errors"] = []
+        result["semantic_skipped"] = True
+        return result
 
     # --- Schema + CEL (Go validator preferred, Python fallback) ---
     go_result = validate_with_go(output_path)
@@ -79,22 +131,9 @@ def evaluate(
         result["generated_kind"] = go_result.get("policy_kind", "")
         result["generated_name"] = go_result.get("policy_name", "")
         result["validation_stage"] = go_result.get("validation_stage", "")
-
-        if schema_pass and expected_output_kind:
-            actual_kind = go_result.get("policy_kind", "")
-            allowed = {expected_output_kind}
-            if expected_output_kind == "DeletingPolicy":
-                allowed.add("NamespacedDeletingPolicy")
-            if actual_kind not in allowed:
-                schema_pass = False
-                schema_errors.append(
-                    f"Expected kind {sorted(allowed)}, got {actual_kind!r}"
-                )
     else:
         result["validator_used"] = "python_fallback"
-        schema_pass, schema_errors, parsed_doc = validate_schema(
-            output_path, expected_kind=expected_output_kind
-        )
+        schema_pass, schema_errors, parsed_doc = validate_schema(output_path)
         # Extract identity from the already-parsed doc (no re-read)
         if parsed_doc and isinstance(parsed_doc, dict):
             result["generated_api_version"] = parsed_doc.get("apiVersion") or ""

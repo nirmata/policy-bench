@@ -6,7 +6,7 @@ A **public benchmark** for Policy as Code for Kyverno policy types. Compares **[
 
 ![Leaderboard Dashboard](https://github.com/user-attachments/assets/56bc0a22-61ec-4bd1-a49d-72f66b8afc28)
 
-**Dashboard:** <https://nirmata.github.io/convert-policies/>
+**Dashboard:** <https://nirmata.github.io/policy-bench/>
 
 Ranked by **pass rate only** — the percentage of tasks that pass all validation layers. No composite scores, no arbitrary weights. This matches how [SWE-bench](https://www.swebench.com/), [HumanEval](https://github.com/openai/human-eval), [Aider](https://aider.chat/docs/leaderboards/), and every other major AI coding benchmark ranks tools.
 
@@ -201,7 +201,7 @@ Verifies the output kind matches what the dataset specifies (e.g., task says Val
 ## Folder Layout
 
 ```sh
-convert-policies/
+policy-bench/
   run-benchmark.sh               # One-command runner (builds, syncs, benchmarks, reports)
   benchmark.py                    # Main orchestrator
   config.yaml                     # Tool + track + evaluation settings

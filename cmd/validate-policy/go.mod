@@ -1,4 +1,4 @@
-module github.com/nirmata/convert-policies/cmd/validate-policy
+module github.com/nirmata/policy-bench/cmd/validate-policy
 
 go 1.25.8
 

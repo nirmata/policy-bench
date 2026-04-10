@@ -172,7 +172,7 @@ def generate_markdown(agg: dict, leaderboard: list[dict]) -> str:
 
     # Fallback: build markdown directly
     lines: list[str] = []
-    lines.append("# Policy Conversion Benchmark Report")
+    lines.append("# Policy as Code Benchmark Report")
     lines.append(f"\nGenerated: {agg['generated_at']}\n")
 
     lines.append("## Leaderboard\n")
@@ -260,7 +260,7 @@ def generate_html(
     # Fallback: minimal dashboard (Jinja2 missing or template error)
     return (
         f"<html><body style='font-family:sans-serif;padding:2rem;background:#0d1117;color:#c9d1d9'>"
-        f"<h1>Policy Conversion Benchmark</h1>"
+        f"<h1>Policy as Code Benchmark</h1>"
         f"<p>Jinja2 template rendering failed or Jinja2 is not installed. Install or fix: <code>pip install jinja2</code></p>"
         f"<p>Generated: {agg['generated_at']}</p>"
         f"<p>{len(agg['results'])} results from {len(agg['tool_stats'])} tools</p>"

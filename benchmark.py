@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Policy Conversion Benchmark — main orchestrator.
+Policy as Code Benchmark — main orchestrator.
 
   dataset → run tools → collect outputs → evaluate → store JSON → generate report
 
@@ -376,7 +376,7 @@ def _print_summary(results: list[dict]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Policy Conversion Benchmark")
+    parser = argparse.ArgumentParser(description="Policy as Code Benchmark")
     parser.add_argument("--tool", nargs="*", help="Tools to run (default: all enabled)")
     parser.add_argument("--track", help="Filter by conversion track")
     parser.add_argument("--policy-id", nargs="+", help="Run one or more policies by ID")

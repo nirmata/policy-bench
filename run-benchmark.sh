@@ -277,7 +277,7 @@ sync_dataset() {
 
 main() {
   echo ""
-  echo "  Policy Conversion Benchmark"
+  echo "  Policy as Code Benchmark"
   echo "  ==========================="
   echo ""
 

@@ -55,7 +55,7 @@ def _download_extract(*, repo: str, ref: str, cache_dir: Path) -> Path:
     tarball = cache_dir / f"{ref}.tar.gz"
 
     print(f"  Fetching {url}")
-    req = urllib.request.Request(url, headers={"User-Agent": "convert-policies-sync"})
+    req = urllib.request.Request(url, headers={"User-Agent": "policy-bench-sync"})
     with urllib.request.urlopen(req, timeout=120) as resp:
         tarball.write_bytes(resp.read())
 

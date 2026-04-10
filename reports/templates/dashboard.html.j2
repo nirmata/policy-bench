@@ -185,7 +185,7 @@ new Chart(document.getElementById('scatterChart'), {
       tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.raw.y.toFixed(0) + '% pass, $' + (ctx.raw.x / 1000).toFixed(4) + '/task' } }
     },
     scales: {
-      x: { ...scaleOpts, title: { display: true, text: 'Avg Cost per Task ($ x1000)', color: tickColor }, grid: { color: gridColor } },
+      x: { ...scaleOpts, reverse: true, title: { display: true, text: 'Avg Cost per Task ($ ×1000) — lower is better →', color: tickColor }, grid: { color: gridColor } },
       y: { ...scaleOpts, title: { display: true, text: 'Pass Rate (%)', color: tickColor }, beginAtZero: true, max: 100, ticks: { ...scaleOpts.ticks, callback: v => v + '%' } }
     }
   }

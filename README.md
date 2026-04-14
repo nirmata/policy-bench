@@ -1,6 +1,6 @@
 # Policy As Code Benchmark
 
-A **public benchmark** for Policy as Code for Kyverno policy types. Compares **[Nirmata Platform Assistant](https://nirmata.com/nctl-ai/)**, **Claude Code**, and **Cursor**, using identical inputs, bare-minimum prompts, containerized isolation, and rigorous validation.
+A **public benchmark** for Policy as Code for Kyverno policy types. Compares **[Nirmata Platform Assistant](https://nirmata.com/)**, **Claude Code**, and **Cursor**, using identical inputs, bare-minimum prompts, containerized isolation, and rigorous validation.
 
 ## Leaderboard
 

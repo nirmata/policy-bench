@@ -63,6 +63,14 @@
   .err-text { font-size: 0.72rem; color: var(--muted); max-width: 350px;
               overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+  /* About section */
+  .about { background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+           padding: 1.5rem 2rem; margin-bottom: 2rem; line-height: 1.6; font-size: 0.88rem; color: var(--fg); }
+  .about p { margin-bottom: 0.75rem; }
+  .about p:last-child { margin-bottom: 0; }
+  .about a { color: var(--accent); text-decoration: none; }
+  .about a:hover { text-decoration: underline; }
+
   @media (max-width: 800px) { .charts { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -70,6 +78,13 @@
 
 <h1>Policy as Code Benchmark</h1>
 <p class="subtitle">{{ agg.generated_at[:10] }} &middot; {{ agg.results | length }} tasks &middot; {{ agg.tool_stats | length }} tools &middot; Bare-minimum prompts, containerized isolation</p>
+
+{# ---- About ---- #}
+<div class="about">
+  <p>This benchmark evaluates AI-powered tools on <strong>Kyverno Policy as Code</strong> tasks — converting legacy ClusterPolicies to the Kyverno 1.16+ format and generating new policies from natural-language descriptions. Each tool receives identical inputs and bare-minimum prompts inside containerized isolation, and its output is validated through schema checks, CEL expression analysis, and functional tests using the Kyverno CLI.</p>
+  <p>Tools are ranked by <strong>pass rate only</strong> — the percentage of tasks that pass all validation layers. Speed and cost are reported as supplementary metrics. No composite scores or arbitrary weights.</p>
+  <p><a href="https://github.com/nirmata/policy-bench">View source, methodology &amp; full documentation on GitHub &rarr;</a></p>
+</div>
 
 {# ---- Leaderboard ---- #}
 <div class="leaderboard">

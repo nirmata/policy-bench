@@ -101,7 +101,23 @@ def _aggregate(results: list[dict]) -> dict:
 
     def _stats(items: list[dict]) -> dict:
         total = len(items)
+        # Per-policy "passed" stays binary (majority-vote / single-run success)
+        # for the per-policy display tables. The headline pass_rate, however,
+        # uses the per-policy `pass_rate` field when present (multi-run mean
+        # methodology) so flaky policies don't get rounded up to 100% pass.
+        # Falls back to binary success when records are single-run.
         passed = sum(1 for i in items if i.get("success"))
+        if items and any("pass_rate" in i for i in items):
+            pass_rate_sum = sum(
+                i.get("pass_rate", 1.0 if i.get("success") else 0.0) for i in items
+            )
+            pass_rate = round(pass_rate_sum / total, 4)
+            n_runs_aggregated = max(
+                (i.get("n_runs_aggregated", 1) for i in items), default=1
+            )
+        else:
+            pass_rate = round(passed / total, 4) if total else 0
+            n_runs_aggregated = 1
         schema_pass = sum(1 for i in items if i.get("schema_pass"))
         # Count functional tests: if a kyverno_test_dir exists, the test is
         # applicable even if the tool produced no output (semantic_skipped due
@@ -118,7 +134,8 @@ def _aggregate(results: list[dict]) -> dict:
         return {
             "total": total,
             "passed": passed,
-            "pass_rate": round(passed / total, 4) if total else 0,
+            "pass_rate": pass_rate,
+            "n_runs_aggregated": n_runs_aggregated,
             "schema_pass": schema_pass,
             "semantic_pass": semantic_pass,
             "semantic_total": len(semantic_items) + len(no_output_skips),
@@ -185,25 +202,31 @@ def generate_markdown(agg: dict, leaderboard: list[dict]) -> str:
             f"| {e['rank']:>4} | {e['tool']:<10} | {e['pass_rate']:>8.0%} | {e['schema_pass']:>5}/{e['total']:<5} | {e['semantic_pass']:>5}/{e['semantic_total']:<5} | {t:>8} | {c:>8} |"
         )
 
+    def _rate_str(stats: dict) -> str:
+        n_runs = stats.get("n_runs_aggregated", 1)
+        if n_runs > 1:
+            return f"{stats['pass_rate']:.1%} mean (N={n_runs})"
+        return f"{stats['passed']}/{stats['total']} passed"
+
     lines.append("\n## Per-Track Breakdown\n")
     for track, stats in agg["track_stats"].items():
         t = f"{stats['avg_time']:.1f}s" if stats["avg_time"] else "-"
-        lines.append(f"- **{track}**: {stats['passed']}/{stats['total']} passed, avg {t}")
+        lines.append(f"- **{track}**: {_rate_str(stats)}, avg {t}")
 
     lines.append("\n## Per-Task-Type Breakdown\n")
     for tt, stats in agg.get("task_type_stats", {}).items():
         t = f"{stats['avg_time']:.1f}s" if stats["avg_time"] else "-"
-        lines.append(f"- **{tt}**: {stats['passed']}/{stats['total']} passed, avg {t}")
+        lines.append(f"- **{tt}**: {_rate_str(stats)}, avg {t}")
 
     lines.append("\n## Per-Difficulty Breakdown\n")
     for diff, stats in agg.get("difficulty_stats", {}).items():
         t = f"{stats['avg_time']:.1f}s" if stats["avg_time"] else "-"
-        lines.append(f"- **{diff}**: {stats['passed']}/{stats['total']} passed, avg {t}")
+        lines.append(f"- **{diff}**: {_rate_str(stats)}, avg {t}")
 
     lines.append("\n## Per-Output-Kind Breakdown\n")
     for kind, stats in agg.get("output_kind_stats", {}).items():
         t = f"{stats['avg_time']:.1f}s" if stats["avg_time"] else "-"
-        lines.append(f"- **{kind}**: {stats['passed']}/{stats['total']} passed, avg {t}")
+        lines.append(f"- **{kind}**: {_rate_str(stats)}, avg {t}")
 
     lines.append("\n## Failures\n")
     failures = [r for r in agg["results"] if not r.get("success")]

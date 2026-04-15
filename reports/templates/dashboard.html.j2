@@ -83,6 +83,11 @@
 <div class="about">
   <p>This benchmark evaluates AI-powered tools on <strong>Kyverno Policy as Code</strong> tasks — converting legacy ClusterPolicies to the Kyverno 1.16+ format and generating new policies from natural-language descriptions. Each tool receives identical inputs and bare-minimum prompts inside containerized isolation, and its output is validated through schema checks, CEL expression analysis, and functional tests using the Kyverno CLI.</p>
   <p>Tools are ranked by <strong>pass rate only</strong> — the percentage of tasks that pass all validation layers. Speed and cost are reported as supplementary metrics. No composite scores or arbitrary weights.</p>
+  {%- set max_runs = (agg.tool_stats.values() | map(attribute='n_runs_aggregated') | list) %}
+  {%- set max_n = max_runs | max if max_runs else 1 %}
+  {%- if max_n and max_n > 1 %}
+  <p><strong>Methodology:</strong> Pass rates shown are the <strong>mean across {{ max_n }} independent runs per tool</strong> on the same dataset. LLM-backed benchmarks have inherent sampling variance — single-run scores are noisy. Reporting the mean (and per-policy pass-rate) gives a more representative measure of each tool&rsquo;s actual accuracy than a one-shot result.</p>
+  {%- endif %}
   <p><a href="https://github.com/nirmata/policy-bench">View source, methodology &amp; full documentation on GitHub &rarr;</a></p>
 </div>
 
@@ -149,7 +154,14 @@
         {% set match = agg.results | selectattr("policy_id", "equalto", pid) | selectattr("tool", "equalto", tool) | list %}
         {% if match %}
           {% set r = match[0] %}
-          <td class="{% if r.success %}pass{% else %}fail{% endif %}">{{ "PASS" if r.success else "FAIL" }}</td>
+          {% set n_runs = r.n_runs_aggregated | default(1) %}
+          {% set rate = r.pass_rate | default(1.0 if r.success else 0.0) %}
+          {% if n_runs > 1 and rate > 0 and rate < 1 %}
+            {%- set n_pass = (rate * n_runs) | round | int -%}
+            <td class="{% if r.success %}pass{% else %}fail{% endif %}" title="passed {{ n_pass }} of {{ n_runs }} runs">{{ "PASS" if r.success else "FAIL" }} <span style="font-size:0.7rem; color:var(--muted);">({{ n_pass }}/{{ n_runs }})</span></td>
+          {% else %}
+            <td class="{% if r.success %}pass{% else %}fail{% endif %}">{{ "PASS" if r.success else "FAIL" }}</td>
+          {% endif %}
         {% else %}
           <td style="color:var(--muted);">—</td>
         {% endif %}

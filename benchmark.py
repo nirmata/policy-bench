@@ -443,6 +443,22 @@ def main() -> int:
     results_dir = REPO_ROOT / "results"
     output_base = REPO_ROOT / "output"
 
+    # Archive the prior run to /tmp before wiping, so data isn't lost when a
+    # new run immediately follows (e.g. one tool today, then another). The
+    # archive is keyed by the prior run's end time so the directory name
+    # sorts chronologically. Cleanup of /tmp/policy-bench is left to the OS.
+    if results_dir.is_dir() and any(results_dir.iterdir()):
+        archive_root = Path("/tmp/policy-bench/runs")
+        archive_root.mkdir(parents=True, exist_ok=True)
+        archive_dir = archive_root / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ_prewipe")
+        shutil.copytree(results_dir, archive_dir)
+        output_archive = archive_dir / "output"
+        for tool_name in tools_to_run:
+            tool_out = output_base / tool_name
+            if tool_out.is_dir():
+                shutil.copytree(tool_out, output_archive / tool_name)
+        print(f"Archived prior results to {archive_dir}", file=sys.stderr)
+
     # Clean previous run artifacts so each run starts fresh.
     shutil.rmtree(results_dir, ignore_errors=True)
     for tool_name in tools_to_run:

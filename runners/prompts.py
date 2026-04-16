@@ -79,6 +79,12 @@ _REFERENCE_CLAUSE = (
     "\n\nReference conversion examples are in {reference_dir} — "
     "each subdirectory has a before.yaml (old ClusterPolicy) and after.yaml "
     "(converted policy). Study these examples before converting."
+    "\n\nFor additional examples and documentation on the new Kyverno 1.16+ policy types, "
+    "refer to:"
+    "\n- Migration guide: https://kyverno.io/docs/guides/migration-to-cel/"
+    "\n- Policy type docs: https://kyverno.io/docs/policy-types/"
+    "\n- Community policy examples: https://github.com/kyverno/kyverno-policies "
+    "(look at *-vpol/, *-mpol/, *-gpol/ directories for converted examples)"
 )
 
 

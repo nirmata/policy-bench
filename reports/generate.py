@@ -85,6 +85,39 @@ def _deduplicate_runs(results: list[dict]) -> list[dict]:
     return [_latest(runs) for runs in groups.values()]
 
 
+def _backfill_output_yaml(results: list[dict]) -> None:
+    """Populate ``output_yaml`` from ``raw_output_path`` when missing.
+
+    Older benchmark runs only stored a 25-line ``yaml_preview``.  This reads
+    the full generated file (up to 10 000 chars) so the dashboard modal can
+    show the complete policy.
+    """
+    for r in results:
+        if r.get("output_yaml"):
+            continue
+        raw_path = r.get("raw_output_path")
+        if not raw_path:
+            continue
+        p = Path(raw_path)
+        if not p.is_file():
+            # Try resolving relative to repo root (path may have been
+            # recorded on a different machine with a different prefix).
+            rel = None
+            for part_idx, part in enumerate(p.parts):
+                if part == "output":
+                    rel = Path(*p.parts[part_idx:])
+                    break
+            if rel:
+                p = REPO_ROOT / rel
+            if not p.is_file():
+                continue
+        try:
+            raw = p.read_text(encoding="utf-8", errors="replace")
+            r["output_yaml"] = raw[:10_000]
+        except OSError:
+            pass
+
+
 def _aggregate(results: list[dict]) -> dict:
     """Compute per-tool, per-track, per-difficulty, per-output-kind, and per-task-type aggregations."""
     by_tool: dict[str, list[dict]] = defaultdict(list)
@@ -158,6 +191,84 @@ def _aggregate(results: list[dict]) -> dict:
         "results": results,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def _generate_tool_summaries(results: list[dict], tool_stats: dict) -> dict[str, str]:
+    """Generate an AI summary per tool using Claude Haiku.
+
+    Uses the same ``ANTHROPIC_API_KEY`` that the Claude runner uses for
+    benchmarks — no additional configuration needed.
+
+    Returns a mapping of ``{tool_name: summary_text}``.  Silently returns an
+    empty dict when the Anthropic SDK is unavailable or the API call fails.
+    """
+    try:
+        import anthropic
+    except ImportError:
+        return {}
+
+    by_tool: dict[str, list[dict]] = defaultdict(list)
+    for r in results:
+        by_tool[r.get("tool", "unknown")].append(r)
+
+    summaries: dict[str, str] = {}
+    client = anthropic.Anthropic()
+
+    for tool, items in by_tool.items():
+        stats = tool_stats.get(tool, {})
+        passed = [r for r in items if r.get("success")]
+        failed = [r for r in items if not r.get("success")]
+
+        # Collect unique error snippets (truncated) for failed tasks
+        error_samples: list[str] = []
+        for r in failed[:15]:
+            errs = (
+                ([r["error"]] if r.get("error") else [])
+                + r.get("schema_errors", [])
+                + r.get("semantic_errors", [])
+            )
+            if errs:
+                error_samples.append(
+                    f"  - {r.get('policy_id', '?')}: {'; '.join(e[:120] for e in errs[:2])}"
+                )
+
+        passed_ids = ", ".join(r.get("policy_id", "?") for r in passed)
+        failed_ids = ", ".join(r.get("policy_id", "?") for r in failed)
+
+        prompt = (
+            f"You are a Kubernetes / Kyverno policy expert analysing benchmark results.\n\n"
+            f"Tool: {tool}\n"
+            f"Total tasks: {stats.get('total', len(items))}\n"
+            f"Pass rate: {stats.get('pass_rate', 0):.0%}\n"
+            f"Schema+CEL passed: {stats.get('schema_pass', 0)}/{stats.get('total', 0)}\n"
+            f"Functional passed: {stats.get('semantic_pass', 0)}/{stats.get('semantic_total', 0)}\n"
+            f"Avg time: {stats.get('avg_time') or 'N/A'}s\n"
+            f"Avg cost: ${stats.get('avg_cost') or 0:.4f}\n\n"
+            f"Passed policies: {passed_ids or 'none'}\n"
+            f"Failed policies: {failed_ids or 'none'}\n\n"
+            f"Sample errors from failed tasks:\n"
+            + ("\n".join(error_samples) if error_samples else "  (no errors captured)")
+            + "\n\n"
+            f"Write a concise summary (4-6 sentences) of how this tool performed overall. "
+            f"Cover: what it did well, its main failure patterns, and how it compares in "
+            f"terms of accuracy. Write in plain English for someone who may not be a "
+            f"Kyverno expert. Do NOT suggest fixes or next steps."
+        )
+
+        try:
+            response = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=400,
+                messages=[{"role": "user", "content": prompt}],
+                timeout=20,
+            )
+            text = (response.content[0].text or "").strip() if response.content else ""
+            if text:
+                summaries[tool] = text
+        except Exception:
+            continue
+
+    return summaries
 
 
 def _compute_leaderboard(tool_stats: dict, config: dict | None = None) -> list[dict]:
@@ -309,7 +420,9 @@ def _build_report_data(
         return None
 
     results = _deduplicate_runs(results)
+    _backfill_output_yaml(results)
     agg = _aggregate(results)
+    agg["tool_summaries"] = _generate_tool_summaries(results, agg["tool_stats"])
     leaderboard = _compute_leaderboard(agg["tool_stats"], config)
     return agg, leaderboard, config
 

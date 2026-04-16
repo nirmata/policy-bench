@@ -151,6 +151,20 @@
                    padding: 0.5rem 0.75rem; margin-bottom: 0.35rem; border-radius: 0 6px 6px 0;
                    font-size: 0.78rem; color: #ff797a; }
 
+  /* Run selector tabs */
+  .run-tabs { display: flex; gap: 0.3rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+  .run-tab { background: rgba(30,52,93,0.4); border: 1px solid var(--border);
+             border-radius: 6px; padding: 0.35rem 0.75rem; font-size: 0.78rem;
+             font-weight: 600; cursor: pointer; color: var(--muted);
+             transition: all 0.15s; }
+  .run-tab:hover { background: rgba(30,52,93,0.7); color: var(--fg); }
+  .run-tab.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .run-tab .run-status { margin-left: 0.3rem; }
+  .run-tab .run-pass { color: #ABEFC6; }
+  .run-tab .run-fail { color: #ff797a; }
+  .run-tab.active .run-pass,
+  .run-tab.active .run-fail { color: var(--bg); }
+
   /* ---- Responsive ---- */
   @media (max-width: 800px) {
     body { padding: 1rem; }
@@ -296,6 +310,7 @@
       </div>
     </div>
     <div class="modal-body">
+      <div id="runTabsContainer"></div>
       <div class="metrics-bar" id="modalMetrics"></div>
       <div class="pipeline" id="modalPipeline"></div>
       <div id="modalSections"></div>
@@ -328,17 +343,13 @@ const resultMap = {};
 resultData.forEach(r => { resultMap[r.tool + '::' + r.policy_id] = r; });
 
 /* ---- Modal logic ---- */
-function openModal(tool, policyId) {
-  const r = resultMap[tool + '::' + policyId];
-  if (!r) return;
 
-  /* Title */
-  document.getElementById('modalTitle').textContent = tool + ' / ' + policyId;
-
-  /* Badge */
-  const badge = document.getElementById('modalBadge');
-  badge.textContent = r.success ? 'PASS' : 'FAIL';
-  badge.className = 'modal-badge ' + (r.success ? 'pass-badge' : 'fail-badge');
+/* Render metrics bar, pipeline, and collapsible sections for a single run.
+   `run` is the per-run record; `parent` carries shared fields (prompt,
+   description, etc.) that were stripped from sub-runs. */
+function renderRunDetail(run, parent) {
+  /* Merge: run fields take precedence, fall back to parent for shared fields */
+  const r = Object.assign({}, parent, run);
 
   /* Metrics bar */
   const metrics = [];
@@ -438,6 +449,63 @@ function openModal(tool, policyId) {
   /* Auto-expand first section */
   const firstToggle = document.querySelector('.section-toggle');
   if (firstToggle) toggleSection(firstToggle);
+}
+
+function selectRun(index) {
+  const r = window._currentRecord;
+  if (!r || !r.runs) return;
+
+  /* Update active tab */
+  document.querySelectorAll('.run-tab').forEach(function(tab, i) {
+    tab.classList.toggle('active', i === index);
+  });
+
+  renderRunDetail(r.runs[index], r);
+}
+
+function openModal(tool, policyId) {
+  const r = resultMap[tool + '::' + policyId];
+  if (!r) return;
+
+  /* Store for run switching */
+  window._currentRecord = r;
+
+  /* Title */
+  document.getElementById('modalTitle').textContent = tool + ' / ' + policyId;
+
+  /* Badge */
+  const badge = document.getElementById('modalBadge');
+  if (r.n_runs_aggregated > 1) {
+    const nPass = r.pass_per_run.filter(Boolean).length;
+    badge.textContent = (r.pass_rate * 100).toFixed(0) + '% (' + nPass + '/' + r.n_runs_aggregated + ' runs)';
+    badge.className = 'modal-badge ' + (r.success ? 'pass-badge' : 'fail-badge');
+  } else {
+    badge.textContent = r.success ? 'PASS' : 'FAIL';
+    badge.className = 'modal-badge ' + (r.success ? 'pass-badge' : 'fail-badge');
+  }
+
+  /* Run tabs — only when per-run detail records exist (clickable) */
+  const tabsContainer = document.getElementById('runTabsContainer');
+  if (r.runs && r.runs.length > 1) {
+    let tabsHtml = '<div class="run-tabs">';
+    r.runs.forEach(function(run, i) {
+      const passed = r.pass_per_run[i];
+      const statusIcon = passed ? '\u2713' : '\u2717';
+      const statusClass = passed ? 'run-pass' : 'run-fail';
+      tabsHtml += '<button class="run-tab' + (i === 0 ? ' active' : '') +
+          '" onclick="selectRun(' + i + ')">' +
+          'Run ' + (i + 1) +
+          '<span class="run-status ' + statusClass + '">' + statusIcon + '</span>' +
+          '</button>';
+    });
+    tabsHtml += '</div>';
+    tabsContainer.innerHTML = tabsHtml;
+  } else {
+    tabsContainer.innerHTML = '';
+  }
+
+  /* Render detail for the first run (or the single record) */
+  renderRunDetail(r.runs && r.runs.length > 1 ? r.runs[0] : r, r);
 
   document.getElementById('modalOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -458,18 +526,36 @@ function openToolModal(toolName) {
 
   // Collect per-task results for this tool
   const toolResults = resultData.filter(r => r.tool === toolName);
-  const passed = toolResults.filter(r => r.success);
-  const failed = toolResults.filter(r => !r.success);
+
+  // Classify by multi-run reliability using pass_per_run
+  const robust = [];   // all runs pass (pass_rate === 1.0)
+  const flaky = [];    // some runs pass (0 < pass_rate < 1)
+  const alwaysFail = []; // no runs pass (pass_rate === 0)
+  toolResults.forEach(function(r) {
+    const ppr = r.pass_per_run;
+    if (ppr && ppr.length > 1) {
+      const nPass = ppr.filter(Boolean).length;
+      if (nPass === ppr.length) robust.push(r);
+      else if (nPass === 0) alwaysFail.push(r);
+      else flaky.push(r);
+    } else {
+      // Single-run: binary pass/fail
+      if (r.success) robust.push(r);
+      else alwaysFail.push(r);
+    }
+  });
+
+  const isMultiRun = (s.n_runs_aggregated || 1) > 1;
 
   let html = '';
 
   // Stats bar
   html += '<div class="metrics-bar">';
-  html += '<div class="metric-box"><span class="metric-value">' + (s.pass_rate * 100).toFixed(0) + '%</span><span class="metric-label">Pass Rate</span></div>';
-  html += '<div class="metric-box"><span class="metric-value">' + (s.schema_pass || 0) + '/' + (s.total || 0) + '</span><span class="metric-label">Schema+CEL</span></div>';
-  html += '<div class="metric-box"><span class="metric-value">' + (s.semantic_pass || 0) + '/' + (s.semantic_total || 0) + '</span><span class="metric-label">Functional</span></div>';
-  html += '<div class="metric-box"><span class="metric-value">' + (s.avg_time ? s.avg_time.toFixed(1) + 's' : 'N/A') + '</span><span class="metric-label">Avg Time</span></div>';
-  html += '<div class="metric-box"><span class="metric-value">' + (s.avg_cost ? '$' + s.avg_cost.toFixed(4) : 'N/A') + '</span><span class="metric-label">Avg Cost</span></div>';
+  html += '<div class="metric-chip"><span class="mc-label">Pass Rate</span><span class="mc-value">' + (s.pass_rate * 100).toFixed(0) + '%</span></div>';
+  html += '<div class="metric-chip"><span class="mc-label">Schema+CEL</span><span class="mc-value">' + (s.schema_pass || 0) + ' / ' + (s.total || 0) + '</span></div>';
+  html += '<div class="metric-chip"><span class="mc-label">Functional</span><span class="mc-value">' + (s.semantic_pass || 0) + ' / ' + (s.semantic_total || 0) + '</span></div>';
+  html += '<div class="metric-chip"><span class="mc-label">Avg Time</span><span class="mc-value">' + (s.avg_time ? s.avg_time.toFixed(1) + 's' : 'N/A') + '</span></div>';
+  html += '<div class="metric-chip"><span class="mc-label">Avg Cost</span><span class="mc-value">' + (s.avg_cost ? '$' + s.avg_cost.toFixed(4) : 'N/A') + '</span></div>';
   html += '</div>';
 
   // AI summary
@@ -478,18 +564,39 @@ function openToolModal(toolName) {
          + esc(summary) + '</div>';
   }
 
-  // Passed policies
-  if (passed.length) {
-    html += '<div style="margin-top:1rem;"><span style="font-size:0.8rem;font-weight:600;color:var(--green);">Passed (' + passed.length + ')</span>';
-    html += '<div style="font-size:0.8rem;color:var(--muted);margin-top:0.4rem;">'
-         + passed.map(r => esc(r.policy_id)).join(', ') + '</div></div>';
+  // Helper to render a policy list with optional per-run detail
+  function policyList(items, showRunDetail) {
+    return items.map(function(r) {
+      let label = esc(r.policy_id);
+      if (showRunDetail && r.pass_per_run && r.pass_per_run.length > 1) {
+        var nPass = r.pass_per_run.filter(Boolean).length;
+        label += ' <span style="color:var(--muted);font-size:0.72rem;">(' + nPass + '/' + r.pass_per_run.length + ')</span>';
+      }
+      return label;
+    }).join(', ');
   }
 
-  // Failed policies
-  if (failed.length) {
-    html += '<div style="margin-top:0.8rem;"><span style="font-size:0.8rem;font-weight:600;color:var(--red);">Failed (' + failed.length + ')</span>';
+  // Robust policies (all runs pass)
+  if (robust.length) {
+    var label = isMultiRun ? 'Robust — all ' + s.n_runs_aggregated + ' runs pass' : 'Passed';
+    html += '<div style="margin-top:1rem;"><span style="font-size:0.8rem;font-weight:600;color:var(--green);">' + esc(label) + ' (' + robust.length + ')</span>';
     html += '<div style="font-size:0.8rem;color:var(--muted);margin-top:0.4rem;">'
-         + failed.map(r => esc(r.policy_id)).join(', ') + '</div></div>';
+         + policyList(robust, false) + '</div></div>';
+  }
+
+  // Flaky policies (some runs pass, some fail)
+  if (flaky.length) {
+    html += '<div style="margin-top:0.8rem;"><span style="font-size:0.8rem;font-weight:600;color:var(--orange);">Flaky — passes some runs (' + flaky.length + ')</span>';
+    html += '<div style="font-size:0.8rem;color:var(--muted);margin-top:0.4rem;">'
+         + policyList(flaky, true) + '</div></div>';
+  }
+
+  // Always-fail policies (no runs pass)
+  if (alwaysFail.length) {
+    var label = isMultiRun ? 'Always fails — 0/' + s.n_runs_aggregated + ' runs' : 'Failed';
+    html += '<div style="margin-top:0.8rem;"><span style="font-size:0.8rem;font-weight:600;color:var(--red);">' + esc(label) + ' (' + alwaysFail.length + ')</span>';
+    html += '<div style="font-size:0.8rem;color:var(--muted);margin-top:0.4rem;">'
+         + policyList(alwaysFail, false) + '</div></div>';
   }
 
   document.getElementById('toolModalBody').innerHTML = html;

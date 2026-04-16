@@ -11,6 +11,7 @@ and produces a merged JSON where each entry has:
   - n_runs_aggregated: number of runs merged
   - pass_per_run: [bool, ...] per-run success
   - aggregation_method: "mean"
+  - runs: list of per-run records (shared/identical fields stripped to save space)
 
 The representative entry (validation details, timing, etc.) is taken from the
 FIRST successful run, or the last run if all failed.
@@ -26,6 +27,13 @@ from collections import defaultdict
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Fields that are identical across runs of the same (tool, policy) —
+# stripped from sub-run records to avoid bloating the JSON.
+SHARED_FIELDS = {
+    "prompt", "input_snippet", "description", "difficulty",
+    "track", "task_type", "expected_output_kind",
+}
 
 
 def merge(run_files: list[Path]) -> list[dict]:
@@ -59,12 +67,29 @@ def merge(run_files: list[Path]) -> list[dict]:
         times = [e["conversion_time_seconds"] for e in entries if e.get("conversion_time_seconds")]
         costs = [e["cost_usd"] for e in entries if e.get("cost_usd") is not None]
 
+        # Build slim per-run records (strip shared fields to save space)
+        slim_runs = []
+        for e in entries:
+            slim = {k: v for k, v in e.items() if k not in SHARED_FIELDS}
+            slim_runs.append(slim)
+
+        # Per-stage-per-run arrays so the dashboard can show accurate
+        # Schema+CEL and Functional totals across all N runs.
+        schema_pass_per_run = [bool(e.get("schema_pass")) for e in entries]
+        semantic_pass_per_run = [
+            bool(e.get("semantic_pass")) for e in entries
+            if not e.get("semantic_skipped", True)
+        ]
+
         result = dict(representative)
         result["success"] = pass_rate >= 0.5  # majority for binary compat
         result["n_runs_aggregated"] = n_runs
         result["pass_rate"] = pass_rate
         result["pass_per_run"] = pass_per_run
+        result["schema_pass_per_run"] = schema_pass_per_run
+        result["semantic_pass_per_run"] = semantic_pass_per_run
         result["aggregation_method"] = "mean"
+        result["runs"] = slim_runs
 
         if times:
             result["conversion_time_seconds"] = round(sum(times) / len(times), 3)

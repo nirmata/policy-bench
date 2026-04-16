@@ -66,23 +66,25 @@ def _load_results(include_files: list[str] | None = None) -> list[dict]:
 
 
 def _deduplicate_runs(results: list[dict]) -> list[dict]:
-    """If multiple runs exist for the same (tool, policy_id), keep the latest only.
+    """If multiple runs exist for the same (tool, policy_id), keep the best one.
 
-    Uses the ``timestamp`` field (ISO-8601) for ordering so that results are
-    correctly ranked regardless of the alphabetical sort order of result filenames
-    (e.g. ``run_*`` files sort after ``benchmark_*`` files even if older).
-    Falls back to load order when timestamp is absent.
+    Prefers records that carry a ``runs`` array (multi-run aggregated data)
+    over plain single-run records.  Among candidates of the same kind, the
+    latest by ``timestamp`` wins.
     """
     groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for r in results:
         key = (r.get("tool", ""), r.get("policy_id", ""))
         groups[key].append(r)
 
-    def _latest(runs: list[dict]) -> dict:
-        timestamped = [(r.get("timestamp", ""), r) for r in runs]
+    def _best(runs: list[dict]) -> dict:
+        # Prefer records with 'runs' array (multi-run aggregated)
+        with_runs = [r for r in runs if r.get("runs")]
+        pool = with_runs if with_runs else runs
+        timestamped = [(r.get("timestamp", ""), r) for r in pool]
         return max(timestamped, key=lambda t: t[0])[1]
 
-    return [_latest(runs) for runs in groups.values()]
+    return [_best(runs) for runs in groups.values()]
 
 
 def _backfill_output_yaml(results: list[dict]) -> None:
@@ -151,17 +153,74 @@ def _aggregate(results: list[dict]) -> dict:
         else:
             pass_rate = round(passed / total, 4) if total else 0
             n_runs_aggregated = 1
-        schema_pass = sum(1 for i in items if i.get("schema_pass"))
-        # Count functional tests: if a kyverno_test_dir exists, the test is
-        # applicable even if the tool produced no output (semantic_skipped due
-        # to no output should count as a failure, not reduce the denominator).
-        semantic_items = [i for i in items if not i.get("semantic_skipped", True)]
-        # Policies skipped only because tool produced no output count against total
-        no_output_skips = [
-            i for i in items
-            if i.get("semantic_skipped", True) and not i.get("success") and not i.get("schema_pass")
-        ]
-        semantic_pass = sum(1 for i in semantic_items if i.get("semantic_pass"))
+
+        # Schema+CEL and Functional counts (task-level).
+        # When per-run arrays exist (schema_pass_per_run, semantic_pass_per_run),
+        # use mean-weighted counts consistent with the headline pass_rate.
+        # Each task contributes its per-run pass fraction (e.g. 2/3 = 0.667)
+        # instead of a binary 0 or 1, then the sum is rounded to an integer.
+        has_per_run_stages = any("schema_pass_per_run" in i for i in items)
+        if has_per_run_stages:
+            schema_pass_sum = 0.0
+            for i in items:
+                sppr = i.get("schema_pass_per_run")
+                if sppr:
+                    schema_pass_sum += sum(1 for x in sppr if x) / len(sppr)
+                elif i.get("schema_pass"):
+                    schema_pass_sum += 1.0
+            schema_pass = round(schema_pass_sum)
+
+            semantic_pass_sum = 0.0
+            semantic_total = 0
+            for i in items:
+                seppr = i.get("semantic_pass_per_run")
+                if seppr:
+                    semantic_total += 1
+                    semantic_pass_sum += sum(1 for x in seppr if x) / len(seppr)
+                elif not i.get("semantic_skipped", True):
+                    semantic_total += 1
+                    if i.get("semantic_pass"):
+                        semantic_pass_sum += 1.0
+                elif i.get("semantic_skipped", True) and not i.get("success") and not i.get("schema_pass"):
+                    semantic_total += 1  # no-output skip counts against total
+            semantic_pass = round(semantic_pass_sum)
+        else:
+            # Fallback: single-run representative counts
+            schema_pass = sum(1 for i in items if i.get("schema_pass"))
+            semantic_items = [i for i in items if not i.get("semantic_skipped", True)]
+            no_output_skips = [
+                i for i in items
+                if i.get("semantic_skipped", True) and not i.get("success") and not i.get("schema_pass")
+            ]
+            semantic_pass = sum(1 for i in semantic_items if i.get("semantic_pass"))
+            semantic_total = len(semantic_items) + len(no_output_skips)
+
+        # Overall multi-run totals and robust/flaky/always-fail classification
+        total_runs = 0
+        passed_runs = 0
+        robust = 0
+        flaky = 0
+        always_fail = 0
+        for i in items:
+            ppr = i.get("pass_per_run")
+            if ppr:
+                total_runs += len(ppr)
+                p = sum(1 for x in ppr if x)
+                passed_runs += p
+                if p == len(ppr):
+                    robust += 1
+                elif p == 0:
+                    always_fail += 1
+                else:
+                    flaky += 1
+            else:
+                total_runs += 1
+                if i.get("success"):
+                    passed_runs += 1
+                    robust += 1
+                else:
+                    always_fail += 1
+
         times = [i["conversion_time_seconds"] for i in items if i.get("conversion_time_seconds")]
         costs = [i["cost_usd"] for i in items if i.get("cost_usd") is not None]
         return {
@@ -171,7 +230,12 @@ def _aggregate(results: list[dict]) -> dict:
             "n_runs_aggregated": n_runs_aggregated,
             "schema_pass": schema_pass,
             "semantic_pass": semantic_pass,
-            "semantic_total": len(semantic_items) + len(no_output_skips),
+            "semantic_total": semantic_total,
+            "total_runs": total_runs,
+            "passed_runs": passed_runs,
+            "robust": robust,
+            "flaky": flaky,
+            "always_fail": always_fail,
             "avg_time": round(sum(times) / len(times), 2) if times else None,
             "avg_cost": round(sum(costs) / len(costs), 6) if costs else None,
         }

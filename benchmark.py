@@ -39,6 +39,7 @@ except ImportError:
     sys.exit(1)
 
 from evaluators.evaluate import evaluate, validate_input
+from evaluators.error_summariser import summarise_errors
 from runners.base import RunResult, ToolRunner
 from runners.prompts import build_prompt
 
@@ -260,12 +261,12 @@ def _run_single(
         functional_ok = semantic_skipped or (semantic is True)
         success = run_result.success and schema_ok and functional_ok
 
-        # Include YAML preview on failure for diagnostics
+        # Include full YAML output on failure for diagnostics
         yaml_preview = None
         if not success and output_path.exists():
             try:
-                with output_path.open(encoding="utf-8", errors="replace") as fh:
-                    yaml_preview = "".join(itertools.islice(fh, 25))
+                raw = output_path.read_text(encoding="utf-8", errors="replace")
+                yaml_preview = raw[:10_000]
             except OSError:
                 pass
 
@@ -321,6 +322,22 @@ def _run_single(
 
         if success or attempt == max_attempts:
             break
+
+    # Generate a human-friendly error summary for failed runs
+    if not last_result.get("success", False):
+        all_errors = (
+            ([last_result["error"]] if last_result.get("error") else [])
+            + last_result.get("expected_kind_errors", [])
+            + last_result.get("schema_errors", [])
+            + last_result.get("semantic_errors", [])
+        )
+        if all_errors:
+            last_result["error_summary"] = summarise_errors(
+                tool_name=tool_name,
+                policy_id=policy_id,
+                expected_kind=expected_kind or "",
+                errors=all_errors,
+            )
 
     return last_result
 

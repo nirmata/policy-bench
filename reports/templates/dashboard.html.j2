@@ -56,7 +56,7 @@
   .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
   .chart-card h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em;
                     color: var(--muted); margin-bottom: 1rem; }
-  canvas { max-height: 280px; }
+  canvas { max-height: 280px; cursor: pointer; }
 
   /* Results table */
   .results { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
@@ -303,6 +303,17 @@
   </div>
 </div>
 
+{# ---- Tool Summary Modal ---- #}
+<div class="modal-overlay" id="toolModalOverlay" onclick="if(event.target===this)closeToolModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="toolModalTitle">—</h3>
+      <button class="modal-close" onclick="closeToolModal()" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body" id="toolModalBody"></div>
+  </div>
+</div>
+
 <footer class="footer">
   <p>&copy; {{ agg.generated_at[:4] }} <a href="https://nirmata.com">Nirmata</a> &middot; <a href="https://github.com/nirmata/policy-bench">policy-bench</a></p>
 </footer>
@@ -310,6 +321,7 @@
 <script>
 /* ---- Embed result data for modal lookups ---- */
 const resultData = {{ agg.results | tojson }};
+const toolSummaries = {{ agg.tool_summaries | default({}) | tojson }};
 
 /* Build lookup: resultMap["tool::policy_id"] = result */
 const resultMap = {};
@@ -379,7 +391,7 @@ function openModal(tool, policyId) {
   if (r.output_yaml) {
     sections.push({ title: 'Generated Output', content: '<div class="code-block"><pre>' + esc(r.output_yaml) + '</pre></div>' });
   } else if (r.yaml_preview) {
-    sections.push({ title: 'Output Preview (first 25 lines)', content: '<div class="code-block"><pre>' + esc(r.yaml_preview) + '</pre></div>' });
+    sections.push({ title: 'Generated Output', content: '<div class="code-block"><pre>' + esc(r.yaml_preview) + '</pre></div>' });
   }
 
   /* Errors */
@@ -390,9 +402,19 @@ function openModal(tool, policyId) {
     r.semantic_errors || [],
   );
   if (allErrors.length) {
+    let errHtml = '';
+    if (r.error_summary) {
+      errHtml += '<div style="background:rgba(69,150,102,0.08);border:1px solid var(--border);border-radius:8px;padding:0.8rem 1rem;margin-bottom:0.8rem;color:var(--fg);font-size:0.85rem;line-height:1.5;">'
+              + esc(r.error_summary) + '</div>';
+    }
+    errHtml += '<details' + (r.error_summary ? '' : ' open') + '>'
+            + '<summary style="font-size:0.8rem;color:var(--muted);cursor:pointer;margin-bottom:0.5rem;">'
+            + 'Raw errors (' + allErrors.length + ')</summary>'
+            + '<ul class="error-list">' + allErrors.map(e => '<li>' + esc(e) + '</li>').join('') + '</ul>'
+            + '</details>';
     sections.push({
       title: 'Errors (' + allErrors.length + ')',
-      content: '<ul class="error-list">' + allErrors.map(e => '<li>' + esc(e) + '</li>').join('') + '</ul>',
+      content: errHtml,
     });
   }
 
@@ -426,6 +448,60 @@ function closeModal() {
   document.body.style.overflow = '';
 }
 
+/* ---- Tool Summary Modal ---- */
+function openToolModal(toolName) {
+  document.getElementById('toolModalTitle').textContent = toolName + ' — Performance Summary';
+
+  const stats = {{ agg.tool_stats | tojson }};
+  const s = stats[toolName] || {};
+  const summary = toolSummaries[toolName];
+
+  // Collect per-task results for this tool
+  const toolResults = resultData.filter(r => r.tool === toolName);
+  const passed = toolResults.filter(r => r.success);
+  const failed = toolResults.filter(r => !r.success);
+
+  let html = '';
+
+  // Stats bar
+  html += '<div class="metrics-bar">';
+  html += '<div class="metric-box"><span class="metric-value">' + (s.pass_rate * 100).toFixed(0) + '%</span><span class="metric-label">Pass Rate</span></div>';
+  html += '<div class="metric-box"><span class="metric-value">' + (s.schema_pass || 0) + '/' + (s.total || 0) + '</span><span class="metric-label">Schema+CEL</span></div>';
+  html += '<div class="metric-box"><span class="metric-value">' + (s.semantic_pass || 0) + '/' + (s.semantic_total || 0) + '</span><span class="metric-label">Functional</span></div>';
+  html += '<div class="metric-box"><span class="metric-value">' + (s.avg_time ? s.avg_time.toFixed(1) + 's' : 'N/A') + '</span><span class="metric-label">Avg Time</span></div>';
+  html += '<div class="metric-box"><span class="metric-value">' + (s.avg_cost ? '$' + s.avg_cost.toFixed(4) : 'N/A') + '</span><span class="metric-label">Avg Cost</span></div>';
+  html += '</div>';
+
+  // AI summary
+  if (summary) {
+    html += '<div style="background:rgba(69,150,102,0.08);border:1px solid var(--border);border-radius:8px;padding:1rem 1.2rem;margin:1rem 0;color:var(--fg);font-size:0.88rem;line-height:1.6;">'
+         + esc(summary) + '</div>';
+  }
+
+  // Passed policies
+  if (passed.length) {
+    html += '<div style="margin-top:1rem;"><span style="font-size:0.8rem;font-weight:600;color:var(--green);">Passed (' + passed.length + ')</span>';
+    html += '<div style="font-size:0.8rem;color:var(--muted);margin-top:0.4rem;">'
+         + passed.map(r => esc(r.policy_id)).join(', ') + '</div></div>';
+  }
+
+  // Failed policies
+  if (failed.length) {
+    html += '<div style="margin-top:0.8rem;"><span style="font-size:0.8rem;font-weight:600;color:var(--red);">Failed (' + failed.length + ')</span>';
+    html += '<div style="font-size:0.8rem;color:var(--muted);margin-top:0.4rem;">'
+         + failed.map(r => esc(r.policy_id)).join(', ') + '</div></div>';
+  }
+
+  document.getElementById('toolModalBody').innerHTML = html;
+  document.getElementById('toolModalOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeToolModal() {
+  document.getElementById('toolModalOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
 function toggleSection(btn) {
   const content = btn.nextElementSibling;
   const isOpen = content.classList.contains('open');
@@ -442,10 +518,10 @@ function esc(str) {
 }
 
 /* Close on Escape key */
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeToolModal(); } });
 
 /* ---- Charts ---- */
-const chartColors = { nctl: '#71CFEB', claude: '#F3782C', cursor: '#459666' };
+const chartColors = { nctl: '#459666', claude: '#FF262A', cursor: '#F3782C' };
 const tools = {{ leaderboard | map(attribute='tool') | list | tojson }};
 const passRates = {{ leaderboard | map(attribute='pass_rate') | list | tojson }}.map(x => x * 100);
 const costs = {{ leaderboard | map(attribute='avg_cost') | list | tojson }}.map(x => x || 0);
@@ -456,12 +532,15 @@ const tickColor = '#A7B0BA';
 const scaleOpts = { grid: { color: gridColor }, ticks: { color: tickColor } };
 
 // Pass rate bar chart
-new Chart(document.getElementById('passChart'), {
+const passChart = new Chart(document.getElementById('passChart'), {
   type: 'bar',
   data: { labels: tools, datasets: [{ data: passRates, backgroundColor: bgColors, borderRadius: 8, barPercentage: 0.5 }] },
   options: {
     responsive: true,
-    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.raw.toFixed(0) + '%' } } },
+    onClick: (evt, elements) => {
+      if (elements.length) openToolModal(tools[elements[0].index]);
+    },
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.raw.toFixed(0) + '% — click for details' } } },
     scales: { y: { ...scaleOpts, beginAtZero: true, max: 100, ticks: { ...scaleOpts.ticks, callback: v => v + '%' } }, x: { ...scaleOpts, grid: { display: false } } }
   }
 });
@@ -474,19 +553,22 @@ new Chart(document.getElementById('scatterChart'), {
       label: t,
       data: [{ x: costs[i] * 1000, y: passRates[i] }],
       backgroundColor: bgColors[i],
-      pointRadius: 8,
-      pointHoverRadius: 11,
+      pointRadius: 5,
+      pointHoverRadius: 8,
     }))
   },
   options: {
     responsive: true,
+    onClick: (evt, elements) => {
+      if (elements.length) openToolModal(tools[elements[0].datasetIndex]);
+    },
     plugins: {
       legend: { display: true, labels: { color: tickColor, usePointStyle: true, pointStyle: 'circle' } },
-      tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.raw.y.toFixed(0) + '% pass, $' + (ctx.raw.x / 1000).toFixed(4) + '/task' } }
+      tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.raw.y.toFixed(0) + '% pass, $' + (ctx.raw.x / 1000).toFixed(4) + '/task — click for details' } }
     },
     scales: {
       x: { ...scaleOpts, reverse: true, title: { display: true, text: 'Avg Cost per Task ($ ×1000) — lower is better →', color: tickColor }, grid: { color: gridColor } },
-      y: { ...scaleOpts, title: { display: true, text: 'Pass Rate (%)', color: tickColor }, beginAtZero: true, max: 100, ticks: { ...scaleOpts.ticks, callback: v => v + '%' } }
+      y: { ...scaleOpts, title: { display: true, text: 'Pass Rate (%)', color: tickColor }, beginAtZero: true, max: 105, ticks: { ...scaleOpts.ticks, callback: v => v + '%' } }
     }
   }
 });

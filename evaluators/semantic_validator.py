@@ -162,12 +162,14 @@ def run_kyverno_test(
         if out and (
             "unknown field" in out or "Invalid value" in out
         ) and "failed to load" in out.lower():
+            kind_label = output_policy_kind or "policy"
             return (
                 False,
                 [
-                    "Kyverno CLI 'test' command does not yet support "
-                    "ValidatingPolicy 1.16+ schema (e.g. spec.admission, "
-                    "spec.assertions). Use --skip-kyverno-test for now."
+                    f"Kyverno CLI 'test' could not load the generated {kind_label} "
+                    f"— the output contains fields not recognised by the CLI's "
+                    f"schema loader. This usually means the tool produced invalid "
+                    f"or unsupported fields for the target kind."
                 ],
                 True,
             )

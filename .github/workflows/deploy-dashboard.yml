@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -36,6 +36,29 @@ jobs:
 
       - name: Generate dashboard
         run: python3 reports/generate.py --format html
+
+      - name: Capture dashboard screenshot
+        run: |
+          npm install puppeteer
+          node -e "
+          const puppeteer = require('puppeteer');
+          (async () => {
+            const browser = await puppeteer.launch({ args: ['--no-sandbox'] });
+            const page = await browser.newPage();
+            await page.setViewport({ width: 1280, height: 900 });
+            await page.goto('file://${GITHUB_WORKSPACE}/reports/output/dashboard.html', { waitUntil: 'networkidle0' });
+            await page.screenshot({ path: 'docs/dashboard-preview.png', fullPage: false });
+            await browser.close();
+          })();
+          "
+
+      - name: Commit screenshot if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/dashboard-preview.png
+          git diff --cached --quiet || git commit -m "docs: update dashboard preview screenshot [skip ci]"
+          git push
 
       - name: Prepare pages artifact
         run: |

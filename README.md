@@ -4,7 +4,8 @@ A **public benchmark** for Policy as Code for Kyverno policy types. Compares **[
 
 ## Leaderboard
 
-![Leaderboard Dashboard](https://github.com/user-attachments/assets/56bc0a22-61ec-4bd1-a49d-72f66b8afc28)
+![Leaderboard Dashboard](docs/dashboard-preview.png)
+<!-- Screenshot auto-updated by CI on each dashboard deploy -->
 
 **Dashboard:** <https://nirmata.github.io/policy-bench/>
 

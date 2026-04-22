@@ -189,9 +189,8 @@ def _run_single(
     base_prompt: str | None = None
 
     # nctl has its own conversion skills; other tools get
-    # reference examples from the reference/ directory.
-    ref_dir = REPO_ROOT / "reference"
-    use_reference = ref_dir.is_dir() and tool_name != "nctl"
+    # doc links to look up Kyverno 1.16+ schema and examples.
+    include_docs = tool_name != "nctl"
 
     for attempt in range(1, max_attempts + 1):
         # Per-task prompt override takes precedence over template
@@ -208,7 +207,7 @@ def _run_single(
                 output_kind=expected_kind,
                 task_type=task_type,
                 description=policy.get("description"),
-                reference_dir=str(ref_dir) if use_reference else None,
+                include_docs=include_docs,
             )
 
         # Save base prompt on first attempt; reset on each retry

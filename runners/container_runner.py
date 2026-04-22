@@ -4,7 +4,7 @@ Supports two modes:
 
 **Ephemeral** (default): one container per task.
   1. ``docker create`` with the tool's entrypoint
-  2. ``docker cp`` input policy + reference examples in
+  2. ``docker cp`` input policy in
   3. ``docker start -a`` (runs the conversion, then exits)
   4. ``docker cp`` output out
   5. ``docker rm``
@@ -74,8 +74,6 @@ def _tee_stream(src: IO[str], buf: list[str], dst: IO[str], prefix: str) -> None
 _CONTAINER_INPUT = "/workspace/policy.yaml"
 _CONTAINER_OUTPUT = "/workspace/output/converted.yaml"
 _CONTAINER_OUTPUT_DIR = "/workspace/output"
-_CONTAINER_REFERENCE = "/workspace/reference"
-_HOST_REFERENCE_DIR = REPO_ROOT / "reference"
 
 # Entrypoint paths inside the container image (set by Dockerfile)
 _ENTRYPOINTS = {
@@ -162,14 +160,6 @@ class ContainerRunner(ToolRunner):
             )
 
         self._container_id = (proc.stdout or "").strip()
-
-        # Copy reference examples once (skip for nctl)
-        ref_dir = _HOST_REFERENCE_DIR
-        if ref_dir.is_dir() and self.name != "nctl":
-            subprocess.run(
-                ["docker", "cp", str(ref_dir), f"{self._container_id}:{_CONTAINER_REFERENCE}"],
-                capture_output=True, text=True, timeout=30,
-            )
 
         # Start the container (sleep infinity keeps it alive)
         start_proc = subprocess.run(
@@ -452,17 +442,6 @@ class ContainerRunner(ToolRunner):
                         model=f"{self.name}-container",
                     )
 
-            # Copy reference conversion examples into the container
-            # (nctl has its own skills, so skip for nctl)
-            ref_dir = _HOST_REFERENCE_DIR
-            if ref_dir.is_dir() and self.name != "nctl":
-                subprocess.run(
-                    ["docker", "cp", str(ref_dir), f"{container_id}:{_CONTAINER_REFERENCE}"],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                )
-
             # Use Popen + tee threads so container stdout/stderr are visible
             # in the benchmark terminal in real time (the agent streams tool
             # calls, reasoning, and file writes). `raw_log` is still captured
@@ -648,10 +627,5 @@ class ContainerRunner(ToolRunner):
         if input_path and input_path != output_path and str(input_path) in rewritten:
             rewritten = rewritten.replace(str(input_path), _CONTAINER_INPUT)
         rewritten = rewritten.replace(str(output_path), _CONTAINER_OUTPUT)
-
-        # Rewrite reference dir path for container context
-        ref_dir = _HOST_REFERENCE_DIR
-        if str(ref_dir) in rewritten:
-            rewritten = rewritten.replace(str(ref_dir), _CONTAINER_REFERENCE)
 
         return rewritten

@@ -75,16 +75,10 @@ _GENERATION_PROMPT = (
 )
 
 
-_REFERENCE_CLAUSE = (
-    "\n\nReference conversion examples are in {reference_dir} — "
-    "each subdirectory has a before.yaml (old ClusterPolicy) and after.yaml "
-    "(converted policy). Study these examples before converting."
-    "\n\nFor additional examples and documentation on the new Kyverno 1.16+ policy types, "
-    "refer to:"
-    "\n- Migration guide: https://kyverno.io/docs/guides/migration-to-cel/"
-    "\n- Policy type docs: https://kyverno.io/docs/policy-types/"
-    "\n- Community policy examples: https://github.com/kyverno/kyverno-policies "
-    "(look at *-vpol/, *-mpol/, *-gpol/ directories for converted examples)"
+_DOCS_CLAUSE = (
+    "\n\nLook up Kyverno 1.16+ documentation and examples before writing the policy:"
+    "\n- https://kyverno.io/docs/"
+    "\n- https://github.com/kyverno/kyverno-policies"
 )
 
 
@@ -96,15 +90,15 @@ def build_prompt(
     output_kind: str | None = None,
     task_type: str = "convert",
     description: str | None = None,
-    reference_dir: str | None = None,
+    include_docs: bool = False,
 ) -> str:
     """Return a formatted prompt for the given track/task.
 
     For *convert* tasks, looks up the template by (track, output_kind).
     For *generate* tasks, uses the generation template with *description*.
 
-    When *reference_dir* is provided, appends a clause pointing the tool
-    at before/after conversion examples.
+    When *include_docs* is True, appends a clause pointing the tool at the
+    canonical Kyverno docs and the community policy repo.
     """
     if task_type == "generate":
         prompt = _GENERATION_PROMPT.format(
@@ -112,8 +106,8 @@ def build_prompt(
             description=description or "enforces the desired policy.",
             output_path=output_path,
         )
-        if reference_dir:
-            prompt += _REFERENCE_CLAUSE.format(reference_dir=reference_dir)
+        if include_docs:
+            prompt += _DOCS_CLAUSE
         return prompt
 
     # Conversion: try (track, output_kind) first, fall back to (track, None)
@@ -135,7 +129,7 @@ def build_prompt(
         description_clause=description_clause,
     )
 
-    if reference_dir:
-        prompt += _REFERENCE_CLAUSE.format(reference_dir=reference_dir)
+    if include_docs:
+        prompt += _DOCS_CLAUSE
 
     return prompt

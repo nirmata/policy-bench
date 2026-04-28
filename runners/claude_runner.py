@@ -55,11 +55,22 @@ class ClaudeRunner(ToolRunner):
         prompt: str,
         timeout_seconds: int,
     ) -> RunResult:
-        full_prompt = (
-            f"{prompt}\n\n"
-            f"The source policy file is at: {input_path}\n"
-            f"Write the converted policy to: {output_path}"
-        )
+        is_dir_output = output_path.is_dir()
+
+        if is_dir_output:
+            full_prompt = (
+                f"{prompt}\n\n"
+                f"The policy file is already at: {output_path / 'policy.yaml'}\n"
+                f"Write kyverno-test.yaml and resources.yaml to: {output_path}"
+            )
+            output_check_path: Path | None = output_path / "kyverno-test.yaml"
+        else:
+            full_prompt = (
+                f"{prompt}\n\n"
+                f"The source policy file is at: {input_path}\n"
+                f"Write the converted policy to: {output_path}"
+            )
+            output_check_path = None
 
         cmd = [
             "claude",
@@ -76,6 +87,7 @@ class ClaudeRunner(ToolRunner):
             timeout=timeout_seconds,
             default_model="claude-code-cli",
             tool_version=_get_claude_version(),
+            output_check_path=output_check_path,
         )
 
     # ------------------------------------------------------------------
@@ -89,6 +101,14 @@ class ClaudeRunner(ToolRunner):
         model: str,
         timeout_seconds: int,
     ) -> RunResult:
+        if output_path.is_dir():
+            return RunResult(
+                output_path=output_path,
+                conversion_time_seconds=0,
+                success=False,
+                error="generate_test tasks require the Claude CLI; API mode cannot write multiple files",
+            )
+
         try:
             import anthropic
         except ImportError:

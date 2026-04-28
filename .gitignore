@@ -43,3 +43,4 @@ dataset/.cache/
 dataset/imported/**
 !dataset/imported/README.md
 !dataset/imported/upstream-meta.json
+.gitnexus

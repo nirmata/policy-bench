@@ -69,7 +69,9 @@ class NctlRunner(ToolRunner):
 
         repo_root = Path(__file__).resolve().parent.parent
         version = self._get_version()
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        is_dir_output = output_path.is_dir()
+        if not is_dir_output:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
 
         cmd = [
             nctl_bin, "ai",
@@ -100,18 +102,19 @@ class NctlRunner(ToolRunner):
             )
 
         log = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        output_check = (output_path / "kyverno-test.yaml") if is_dir_output else output_path
         success = (
             proc.returncode == 0
-            and output_path.exists()
+            and output_check.exists()
             and self._AGENT_OK in log
         )
 
         # --- step 4: estimate tokens (nctl doesn't expose real counts) ---
         input_toks = estimate_tokens(prompt)
         output_text = ""
-        if output_path.exists():
+        if output_check.is_file():
             try:
-                output_text = output_path.read_text(encoding="utf-8")
+                output_text = output_check.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError) as exc:
                 print(f"  Warning: could not read output file: {exc}", file=sys.stderr)
         output_toks = estimate_tokens(output_text)

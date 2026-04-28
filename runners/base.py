@@ -131,6 +131,7 @@ def run_cli_subprocess(
     default_model: str,
     tool_version: str | None,
     raw_log_builder: Callable[[str, str], str | None] | None = None,
+    output_check_path: Path | None = None,
 ) -> RunResult:
     """Run a CLI tool as a subprocess and build a RunResult.
 
@@ -148,7 +149,7 @@ def run_cli_subprocess(
     full_prompt : str
         The prompt sent to the tool (used for token estimation fallback).
     output_path : Path
-        Where the converted policy should be written.
+        Where the converted policy (or test-suite directory) should be written.
     timeout : int
         Subprocess timeout in seconds.
     default_model : str
@@ -158,6 +159,12 @@ def run_cli_subprocess(
     raw_log_builder : callable | None
         Optional function ``(stdout: str, stderr: str) -> str`` to build the
         raw_log field.  Defaults to ``stdout[:5000]``.
+    output_check_path : Path | None
+        For directory-output tasks (generate_test), the harness pre-creates
+        ``output_path`` as a directory, so ``output_path.exists()`` is always
+        True.  Pass the canonical artifact (e.g. ``output_path /
+        "kyverno-test.yaml"``) here so the success check and token estimation
+        target the right file.  Defaults to ``output_path`` (file-output mode).
     """
     repo_root = Path(__file__).resolve().parent.parent
 
@@ -200,10 +207,16 @@ def run_cli_subprocess(
     except (_json.JSONDecodeError, TypeError):
         pass
 
-    # -- Determine success / YAML fallback ---------------------------------
-    success = proc.returncode == 0 and output_path.exists()
+    # For directory-output tasks the harness pre-creates output_path, so
+    # output_path.exists() is vacuously True.  Use output_check_path (the
+    # canonical artifact inside the directory) for the real existence test.
+    _check = output_check_path if output_check_path is not None else output_path
 
-    if proc.returncode == 0 and not output_path.exists():
+    # -- Determine success / YAML fallback ---------------------------------
+    success = proc.returncode == 0 and _check.exists()
+
+    if proc.returncode == 0 and not _check.exists() and output_check_path is None:
+        # YAML extraction only applies to single-file (convert/generate) output.
         yaml_text = extract_yaml_block(raw_text)
         if yaml_text:
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -218,9 +231,9 @@ def run_cli_subprocess(
         output_tokens = real_output_tokens
     else:
         out_text = ""
-        if output_path.exists():
+        if _check.is_file():
             try:
-                out_text = output_path.read_text(encoding="utf-8")
+                out_text = _check.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError) as exc:
                 print(f"  Warning: could not read output file: {exc}", file=sys.stderr)
         output_tokens = estimate_tokens(out_text)

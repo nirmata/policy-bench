@@ -7,8 +7,12 @@ Any tool can be benchmarked by providing a script that follows this contract:
     # The converted/generated policy must be written to <output-path>.
     # <source-policy-path> is "none" for generation tasks.
 
+For generate_test tasks, BENCH_OUTPUT_KIND=dir is set in the subprocess
+environment and <output-path> is a pre-created directory.  The script should
+write kyverno-test.yaml and resources.yaml into it.
+
 After the script exits, the harness:
-  - Checks for the output file
+  - Checks for the output file (or kyverno-test.yaml in dir mode)
   - Reads an optional sidecar <output-path>.meta.json for real token counts:
       {"input_tokens": N, "output_tokens": N, "model": "...", "tool_version": "..."}
   - Falls back to heuristic token estimation if no sidecar is found
@@ -18,6 +22,7 @@ After the script exits, the harness:
 from __future__ import annotations
 
 import json as _json
+import os
 import subprocess
 import sys
 import time
@@ -51,11 +56,18 @@ class ScriptRunner(ToolRunner):
         config: dict | None = None,
     ) -> RunResult:
         repo_root = Path(__file__).resolve().parent.parent
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # output_path is a pre-created directory for generate_test tasks.
+        # Detect this before touching the filesystem.
+        is_dir_output = output_path.is_dir()
+        if not is_dir_output:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
 
         source_arg = str(input_path) if input_path and input_path.is_file() else "none"
-
         cmd = [str(self._script), source_arg, str(output_path), prompt]
+
+        # Signal dir-output mode to the shell script via environment variable.
+        env = {**os.environ, "BENCH_OUTPUT_KIND": "dir" if is_dir_output else "file"}
 
         start = time.monotonic()
         try:
@@ -65,6 +77,7 @@ class ScriptRunner(ToolRunner):
                 text=True,
                 timeout=timeout_seconds,
                 cwd=str(repo_root),
+                env=env,
             )
             elapsed = time.monotonic() - start
         except subprocess.TimeoutExpired:
@@ -76,7 +89,11 @@ class ScriptRunner(ToolRunner):
             )
 
         log = (proc.stdout or "") + "\n" + (proc.stderr or "")
-        success = proc.returncode == 0 and output_path.exists()
+
+        # For directory output, the directory itself is pre-created; check the
+        # canonical artifact to confirm the tool actually produced something.
+        output_check = (output_path / "kyverno-test.yaml") if is_dir_output else output_path
+        success = proc.returncode == 0 and output_check.exists()
 
         # Read optional sidecar metadata
         meta_path = Path(str(output_path) + ".meta.json")
@@ -105,9 +122,9 @@ class ScriptRunner(ToolRunner):
             input_tokens = estimate_tokens(prompt)
         if output_tokens is None:
             out_text = ""
-            if output_path.exists():
+            if output_check.is_file():
                 try:
-                    out_text = output_path.read_text(encoding="utf-8")
+                    out_text = output_check.read_text(encoding="utf-8")
                 except (OSError, UnicodeDecodeError) as exc:
                     print(f"  Warning: could not read output file: {exc}", file=sys.stderr)
             output_tokens = estimate_tokens(out_text)

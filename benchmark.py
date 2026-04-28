@@ -4,9 +4,10 @@ Policy as Code Benchmark — main orchestrator.
 
   dataset → run tools → collect outputs → evaluate → store JSON → generate report
 
-Supports two task types:
+Supports three task types:
   - **convert** — source policy → converted output (schema+CEL + functional test)
   - **generate** — natural-language prompt → new policy (schema+CEL + functional test)
+  - **generate_test** — source policy → kyverno-test.yaml + resources.yaml (schema + kyverno test + coverage)
 
 Usage:
   python3 benchmark.py                                   # all tools, all policies
@@ -16,6 +17,7 @@ Usage:
   python3 benchmark.py --tool nctl --max-attempts 3      # iterative improvement
   python3 benchmark.py --difficulty stress               # stress tests only
   python3 benchmark.py --task-type generate              # generation tasks only
+  python3 benchmark.py --task-type generate_test         # test-generation tasks only
   python3 benchmark.py --output-kind MutatingPolicy      # filter by target kind
   python3 benchmark.py --report                          # generate report from existing results
 """
@@ -40,6 +42,7 @@ except ImportError:
 
 from evaluators.evaluate import evaluate, validate_input
 from evaluators.error_summariser import summarise_errors
+from evaluators.testgen_validator import evaluate_testgen
 from runners.base import RunResult, ToolRunner
 from runners.prompts import build_prompt
 
@@ -144,6 +147,7 @@ def _run_single(
     policy_id = policy["id"]
     task_type = policy.get("task_type", "convert")
     is_generate = task_type == "generate"
+    is_testgen = task_type == "generate_test"
     expect_failure = policy.get("expect_failure", False)
 
     input_path: Path | None = None
@@ -164,8 +168,8 @@ def _run_single(
             "error": f"Dataset file not found: {input_path}.{hint}",
         }
 
-    # Validate input (skip for generation tasks and stress tests)
-    if not is_generate and not expect_failure and input_path:
+    # Validate input (skip for generation/test-gen tasks and stress tests)
+    if not is_generate and not is_testgen and not expect_failure and input_path:
         in_pass, in_errors = validate_input(
             track, input_path, use_kubectl=eval_config.get("kubectl_dry_run", True),
         )
@@ -180,8 +184,16 @@ def _run_single(
             }
 
     output_dir = REPO_ROOT / "output" / tool_name
-    output_path = output_dir / f"{policy_id}.yaml"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if is_testgen:
+        output_path = output_dir / policy_id  # directory, not a file
+        output_path.mkdir(parents=True, exist_ok=True)
+        # Copy source policy into the output dir so kyverno test can reference
+        # it as policies: [policy.yaml] — no ../.. path games needed.
+        if input_path:
+            shutil.copy2(input_path, output_path / "policy.yaml")
+    else:
+        output_path = output_dir / f"{policy_id}.yaml"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
     timeout = eval_config.get("timeout_seconds", 120)
     expected_kind = policy.get("expected_output_kind")
@@ -242,38 +254,62 @@ def _run_single(
             kyverno_test_dir = REPO_ROOT / "dataset" / policy["kyverno_test_dir"]
 
         eval_result: dict = {}
-        if run_result.success and output_path.exists():
-            eval_result = evaluate(
-                track,
-                input_path,
-                output_path,
-                expected_output_kind=expected_kind,
-                skip_kyverno_test=eval_config.get("skip_kyverno_test", False),
-                kyverno_test_dir=kyverno_test_dir,
-                task_type=task_type,
-            )
+        if is_testgen:
+            if run_result.success and output_path.is_dir():
+                eval_result = evaluate_testgen(
+                    generated_dir=output_path,
+                    source_policy=input_path or output_path / "policy.yaml",
+                    oracle_dir=kyverno_test_dir,
+                    timeout_sec=timeout,
+                )
+            elif kyverno_test_dir:
+                # No output directory produced — penalise same as a failed run
+                eval_result = {
+                    "testgen_composite_pass": False,
+                    "testgen_schema_pass": False,
+                    "testgen_errors": ["No output directory produced by tool"],
+                    "schema_pass": False,
+                    "semantic_pass": False,
+                    "semantic_skipped": False,
+                    "semantic_errors": ["No output produced by tool"],
+                }
+        else:
+            if run_result.success and output_path.exists():
+                eval_result = evaluate(
+                    track,
+                    input_path,
+                    output_path,
+                    expected_output_kind=expected_kind,
+                    skip_kyverno_test=eval_config.get("skip_kyverno_test", False),
+                    kyverno_test_dir=kyverno_test_dir,
+                    task_type=task_type,
+                )
+            # If tool failed to produce output but a functional test exists,
+            # mark functional as failed (not skipped) — no output is worse than
+            # wrong output and should count against the tool's score.
+            if not eval_result and kyverno_test_dir:
+                eval_result["semantic_pass"] = False
+                eval_result["semantic_skipped"] = False
+                eval_result["semantic_errors"] = ["No output produced by tool"]
 
-        # If tool failed to produce output but a functional test exists,
-        # mark functional as failed (not skipped) — no output is worse than
-        # wrong output and should count against the tool's score.
-        if not eval_result and kyverno_test_dir:
-            eval_result["semantic_pass"] = False
-            eval_result["semantic_skipped"] = False
-            eval_result["semantic_errors"] = ["No output produced by tool"]
+        if is_testgen:
+            success = run_result.success and eval_result.get("testgen_composite_pass", False)
+        else:
+            schema_ok = eval_result.get("schema_pass", False)
+            semantic = eval_result.get("semantic_pass")
+            semantic_skipped = eval_result.get("semantic_skipped", True)
+            functional_ok = semantic_skipped or (semantic is True)
+            success = run_result.success and schema_ok and functional_ok
 
-        # Success = tool ran + schema/CEL pass + functional pass (or skipped)
-        schema_ok = eval_result.get("schema_pass", False)
-        semantic = eval_result.get("semantic_pass")
-        semantic_skipped = eval_result.get("semantic_skipped", True)
-        functional_ok = semantic_skipped or (semantic is True)
-        success = run_result.success and schema_ok and functional_ok
+        # For test-gen tasks the canonical output file is kyverno-test.yaml inside the dir.
+        output_yaml_path = (output_path / "kyverno-test.yaml") if is_testgen else output_path
 
         # Include full YAML output on failure for diagnostics
         yaml_preview = None
-        if not success and output_path.exists():
+        if not success:
             try:
-                raw = output_path.read_text(encoding="utf-8", errors="replace")
-                yaml_preview = raw[:10_000]
+                if output_yaml_path.exists():
+                    yaml_preview = output_yaml_path.read_text(encoding="utf-8", errors="replace")[:10_000]
             except OSError:
                 pass
 
@@ -288,12 +324,11 @@ def _run_single(
 
         # Capture generated output YAML
         output_yaml = None
-        if output_path.exists():
-            try:
-                raw = output_path.read_text(encoding="utf-8", errors="replace")
-                output_yaml = raw[:10_000]
-            except OSError:
-                pass
+        try:
+            if output_yaml_path.exists():
+                output_yaml = output_yaml_path.read_text(encoding="utf-8", errors="replace")[:10_000]
+        except OSError:
+            pass
 
         timestamp_str = datetime.now(timezone.utc).isoformat()
         last_result = {
@@ -316,7 +351,7 @@ def _run_single(
             "tokens_estimated": run_result.tokens_estimated,
             "model": run_result.model,
             "tool_version": run_result.tool_version,
-            "raw_output_path": str(output_path),
+            "raw_output_path": str(output_yaml_path),
             "attempt": attempt,
             "max_attempts": max_attempts,
             **eval_result,
@@ -436,7 +471,7 @@ def main() -> int:
     parser.add_argument("--track", help="Filter by conversion track")
     parser.add_argument("--policy-id", nargs="+", help="Run one or more policies by ID")
     parser.add_argument("--difficulty", help="Filter by difficulty (easy, medium, hard, stress)")
-    parser.add_argument("--task-type", choices=["convert", "generate"], help="Filter by task type")
+    parser.add_argument("--task-type", choices=["convert", "generate", "generate_test"], help="Filter by task type")
     parser.add_argument("--output-kind", help="Filter by expected output kind (e.g. MutatingPolicy)")
     parser.add_argument("--max-attempts", type=int, default=1, help="Max attempts per policy (iterative improvement)")
     parser.add_argument("--workers", type=int, default=1, help="Parallel workers per tool (default: 1 = sequential)")

@@ -67,6 +67,10 @@ task_types:
     description: "Generate a new policy from a natural-language description"
     requires_input: false
     evaluations: [schema, semantic]
+  generate_test:
+    description: "Generate a Kyverno CLI test suite for an existing policy"
+    requires_input: true
+    evaluations: [schema, semantic, coverage]
 
 evaluation:
   skip_kyverno_test: false

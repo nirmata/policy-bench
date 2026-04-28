@@ -239,6 +239,36 @@
   </div>
 </div>
 
+{# ---- Kyverno CLI Test Generation leaderboard ---- #}
+{% if has_testgen is defined and has_testgen %}
+<div class="leaderboard" style="margin-top:1.5rem;">
+  <h2>Kyverno CLI Test Generation</h2>
+  <p style="font-size:0.8rem;color:var(--muted);margin:0.25rem 0 0.75rem;">Composite pass = schema valid <em>and</em> <code>kyverno test</code> exits 0 <em>and</em> suite has both pass and fail cases. Coverage score = generated tuples / oracle tuples (capped at 1.0, not gated).</p>
+  <div class="table-scroll">
+  <table class="lb-table">
+    <tr>
+      <th>Tool</th>
+      <th>Composite Pass</th>
+      <th>Avg Coverage</th>
+      <th>Has Pass+Fail</th>
+      <th>Avg Time</th>
+      <th>Avg Cost</th>
+    </tr>
+    {% for e in leaderboard_testgen %}
+    <tr>
+      <td class="tool-name">{{ e.tool }}</td>
+      <td class="metric">{{ e.composite_pass }}<span class="metric-label"> / {{ e.total }}</span></td>
+      <td class="metric">{{ "%.0f" | format(e.avg_coverage * 100) }}%</td>
+      <td class="metric">{{ e.has_pass_and_fail }}<span class="metric-label"> / {{ e.total }}</span></td>
+      <td class="metric">{{ "%.1f" | format(e.avg_time) if e.avg_time else "-" }}{{ "s" if e.avg_time else "" }}</td>
+      <td class="metric">{{ "$%.4f" | format(e.avg_cost) if e.avg_cost else "-" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+</div>
+{% endif %}
+
 {# ---- Charts ---- #}
 <div class="charts">
   <div class="chart-card">
@@ -360,6 +390,12 @@ function renderRunDetail(run, parent) {
   if (r.cost_usd != null) metrics.push({ label: 'Cost', value: '$' + r.cost_usd.toFixed(4) });
   if (r.total_tokens != null) metrics.push({ label: 'Tokens', value: r.total_tokens.toLocaleString() });
   if (r.model) metrics.push({ label: 'Model', value: r.model });
+  if (r.task_type === 'generate_test') {
+    if (r.testgen_coverage_score != null) metrics.push({ label: 'Coverage', value: (r.testgen_coverage_score * 100).toFixed(0) + '%' });
+    if (r.testgen_has_pass_and_fail != null) metrics.push({ label: 'Pass+Fail Cases', value: r.testgen_has_pass_and_fail ? 'yes' : 'no' });
+    if (r.testgen_generated_tuples != null) metrics.push({ label: 'Generated Tuples', value: r.testgen_generated_tuples });
+    if (r.testgen_oracle_tuples) metrics.push({ label: 'Oracle Tuples', value: r.testgen_oracle_tuples });
+  }
 
   document.getElementById('modalMetrics').innerHTML = metrics.map(m =>
     '<div class="metric-chip"><span class="mc-label">' + esc(m.label) + '</span><span class="mc-value">' + esc(m.value) + '</span></div>'

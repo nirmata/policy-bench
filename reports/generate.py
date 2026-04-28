@@ -335,6 +335,34 @@ def _generate_tool_summaries(results: list[dict], tool_stats: dict) -> dict[str,
     return summaries
 
 
+def _compute_testgen_leaderboard(testgen_results: list[dict]) -> list[dict]:
+    """Per-tool stats for generate_test runs: composite pass, coverage, has_pass_and_fail."""
+    by_tool: dict[str, list[dict]] = defaultdict(list)
+    for r in testgen_results:
+        by_tool[r.get("tool", "unknown")].append(r)
+
+    board = []
+    for tool, items in sorted(by_tool.items()):
+        total = len(items)
+        composite_pass = sum(1 for i in items if i.get("testgen_composite_pass"))
+        coverage_scores = [i["testgen_coverage_score"] for i in items if i.get("testgen_coverage_score") is not None]
+        has_pf = sum(1 for i in items if i.get("testgen_has_pass_and_fail"))
+        times = [i["conversion_time_seconds"] for i in items if i.get("conversion_time_seconds")]
+        costs = [i["cost_usd"] for i in items if i.get("cost_usd") is not None]
+        board.append({
+            "tool": tool,
+            "total": total,
+            "composite_pass": composite_pass,
+            "composite_pass_rate": round(composite_pass / total, 4) if total else 0,
+            "avg_coverage": round(sum(coverage_scores) / len(coverage_scores), 4) if coverage_scores else 0,
+            "has_pass_and_fail": has_pf,
+            "avg_time": round(sum(times) / len(times), 2) if times else None,
+            "avg_cost": round(sum(costs) / len(costs), 6) if costs else None,
+        })
+    board.sort(key=lambda x: (-x["composite_pass_rate"], x["avg_time"] or float("inf")))
+    return board
+
+
 def _compute_leaderboard(tool_stats: dict, config: dict | None = None) -> list[dict]:
     """Rank tools by pass_rate. Speed, cost, diff reported as supplementary metrics."""
     board: list[dict] = []
@@ -393,6 +421,19 @@ def generate_markdown(agg: dict, leaderboard: list[dict]) -> str:
         t = f"{stats['avg_time']:.1f}s" if stats["avg_time"] else "-"
         lines.append(f"- **{tt}**: {_rate_str(stats)}, avg {t}")
 
+    testgen = [r for r in agg["results"] if r.get("task_type") == "generate_test"]
+    if testgen:
+        tg_board = _compute_testgen_leaderboard(testgen)
+        lines.append("\n## Kyverno CLI Test Generation\n")
+        lines.append(f"| {'Tool':<10} | {'Composite Pass':>14} | {'Avg Coverage':>12} | {'Has Pass+Fail':>13} | {'Avg Time':>8} |")
+        lines.append(f"|{'-'*12}|{'-'*16}|{'-'*14}|{'-'*15}|{'-'*10}|")
+        for e in tg_board:
+            t = f"{e['avg_time']:.1f}s" if e["avg_time"] else "-"
+            lines.append(
+                f"| {e['tool']:<10} | {e['composite_pass']:>5}/{e['total']:<8} | "
+                f"{e['avg_coverage']:>11.0%} | {e['has_pass_and_fail']:>5}/{e['total']:<7} | {t:>8} |"
+            )
+
     lines.append("\n## Per-Difficulty Breakdown\n")
     for diff, stats in agg.get("difficulty_stats", {}).items():
         t = f"{stats['avg_time']:.1f}s" if stats["avg_time"] else "-"
@@ -421,18 +462,21 @@ def generate_markdown(agg: dict, leaderboard: list[dict]) -> str:
 def generate_html(
     agg: dict, leaderboard: list[dict], config: dict | None = None
 ) -> str:
-    """Generate a self-contained HTML dashboard (combined + conversion + generation)."""
+    """Generate a self-contained HTML dashboard (combined + conversion + generation + test-gen)."""
     results_all = agg["results"]
     convert_results = [
         r for r in results_all if r.get("task_type", "convert") == "convert"
     ]
     generate_results = [r for r in results_all if r.get("task_type") == "generate"]
+    testgen_results = [r for r in results_all if r.get("task_type") == "generate_test"]
     convert_agg = _aggregate(convert_results)
     generate_agg = _aggregate(generate_results)
     leaderboard_convert = _compute_leaderboard(convert_agg["tool_stats"], config)
     leaderboard_generate = _compute_leaderboard(generate_agg["tool_stats"], config)
+    leaderboard_testgen = _compute_testgen_leaderboard(testgen_results)
     has_convert = bool(convert_results)
     has_generate = bool(generate_results)
+    has_testgen = bool(testgen_results)
 
     if Environment and TEMPLATES_DIR.exists():
         env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)))
@@ -443,10 +487,13 @@ def generate_html(
                 leaderboard=leaderboard,
                 leaderboard_convert=leaderboard_convert,
                 leaderboard_generate=leaderboard_generate,
+                leaderboard_testgen=leaderboard_testgen,
                 convert_results=convert_results,
                 generate_results=generate_results,
+                testgen_results=testgen_results,
                 has_convert=has_convert,
                 has_generate=has_generate,
+                has_testgen=has_testgen,
             )
         except Exception as exc:
             print(

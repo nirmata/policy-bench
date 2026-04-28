@@ -254,7 +254,11 @@ def run_cli_subprocess(
         output_path=output_path,
         conversion_time_seconds=round(elapsed, 3),
         success=success,
-        error=None if success else f"{cmd[0]} CLI exited {proc.returncode}",
+        error=None if success else (
+            f"{cmd[0]} CLI exited {proc.returncode}"
+            if proc.returncode != 0
+            else f"{cmd[0]} exited 0 but did not write output to {_check}"
+        ),
         model=model_name,
         tool_version=tool_version,
         input_tokens=input_tokens,

@@ -348,3 +348,63 @@ policies:
   description: generates a NetworkPolicy named 'default-deny' in any newly-created Namespace. The generated NetworkPolicy
     must select all Pods (empty podSelector), include both 'Ingress' and 'Egress' policyTypes, and define no ingress or egress
     rules so all traffic is denied by default.
+
+# ======================================================================
+# Test-generation tasks (task_type: generate_test)
+#
+# Given an existing Kyverno policy, write a kyverno-test.yaml + resources.yaml
+# test suite that exercises the policy.  The oracle in kyverno_test_dir is used
+# for coverage scoring (generated vs oracle tuple counts, has_pass_and_fail).
+# ======================================================================
+- id: tg_cp_require_labels
+  track: kyverno-test-gen
+  task_type: generate_test
+  difficulty: easy
+  expected_output_kind: null
+  path: imported/kyverno-policies/cp_require_labels.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_require_labels
+  description: define and use labels that identify semantic attributes of your application or Deployment
+- id: tg_cp_disallow_default_namespace
+  track: kyverno-test-gen
+  task_type: generate_test
+  difficulty: medium
+  expected_output_kind: null
+  path: imported/kyverno-policies/cp_disallow_default_namespace.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_disallow_default_namespace
+  description: kubernetes Namespaces are an optional feature that provide a way to segment and isolate cluster resources across
+    multiple applications and users
+- id: tg_cp_require_drop_all
+  track: kyverno-test-gen
+  task_type: generate_test
+  difficulty: medium
+  expected_output_kind: null
+  path: imported/kyverno-policies/cp_require_drop_all.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_require_drop_all
+  description: capabilities permit privileged actions without giving full root access
+- id: tg_cp_inject_sidecar
+  track: kyverno-test-gen
+  task_type: generate_test
+  difficulty: medium
+  expected_output_kind: null
+  path: imported/kyverno-policies/cp_inject_sidecar.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_inject_sidecar
+  description: the sidecar pattern is very common in Kubernetes whereby other applications can insert components via admission
+    control into matched Deployments
+- id: tg_cp_kasten_generate_backup
+  track: kyverno-test-gen
+  task_type: generate_test
+  difficulty: hard
+  expected_output_kind: null
+  path: imported/kyverno-policies/cp_kasten_generate_backup.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_kasten_generate_backup
+  description: generates a Kasten policy for a namespace that includes any Deployment or StatefulSet with a "dataprotection"
+    label
+- id: tg_vpol_block_ephemeral_containers
+  track: kyverno-test-gen
+  task_type: generate_test
+  difficulty: easy
+  expected_output_kind: null
+  path: imported/kyverno-policies/vpol_block_ephemeral_containers.yaml
+  kyverno_test_dir: imported/kyverno-tests/vpol_block_ephemeral_containers
+  description: native ValidatingPolicy (policies.kyverno.io/v1) that blocks ephemeral debug containers from being attached
+    to Pods

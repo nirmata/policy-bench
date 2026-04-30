@@ -182,3 +182,13 @@ policies:
   - id: gen_disallow_capabilities
     upstream_path: pod-security/baseline/disallow-capabilities/disallow-capabilities.yaml
     sync_test: true
+
+  # =====================================================================
+  # Native ValidatingPolicy sources — for generate_test benchmark tasks.
+  # These are already in the new policies.kyverno.io/v1 format, so the
+  # test-gen benchmark can measure generation against a modern policy kind.
+  # =====================================================================
+
+  - id: vpol_block_ephemeral_containers
+    upstream_path: other-vpol/block-ephemeral-containers/block-ephemeral-containers.yaml
+    sync_test: true

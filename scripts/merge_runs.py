@@ -5,7 +5,7 @@ Usage:
   python3 scripts/merge_runs.py results/run1/benchmark_*.json results/run2/benchmark_*.json ...
   python3 scripts/merge_runs.py results/run*/benchmark_*.json
 
-Reads the aggregated benchmark JSON from each run, groups by (tool, policy_id),
+Reads the aggregated benchmark JSON from each run, groups by (tool, policy_id, task_type),
 and produces a merged JSON where each entry has:
   - pass_rate: mean of successes across runs (0.0, 0.333, 0.667, 1.0 for 3 runs)
   - n_runs_aggregated: number of runs merged
@@ -38,8 +38,8 @@ SHARED_FIELDS = {
 
 def merge(run_files: list[Path]) -> list[dict]:
     """Merge multiple run files into a single results list."""
-    # Group all entries by (tool, policy_id)
-    by_key: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    # Group all entries by (tool, policy_id, task_type)
+    by_key: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
 
     for run_file in run_files:
         data = json.loads(run_file.read_text(encoding="utf-8"))
@@ -47,11 +47,11 @@ def merge(run_files: list[Path]) -> list[dict]:
             print(f"  Warning: {run_file} is not a list, skipping", file=sys.stderr)
             continue
         for entry in data:
-            key = (entry["tool"], entry["policy_id"])
+            key = (entry["tool"], entry["policy_id"], entry.get("task_type", "convert"))
             by_key[key].append(entry)
 
     merged: list[dict] = []
-    for (tool, policy_id), entries in sorted(by_key.items()):
+    for (tool, policy_id, _task_type), entries in sorted(by_key.items()):
         n_runs = len(entries)
         pass_per_run = [e.get("success", False) for e in entries]
         pass_rate = round(sum(1 for p in pass_per_run if p) / n_runs, 4)

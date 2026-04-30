@@ -241,9 +241,159 @@ policy-bench/
 - **Functional proof** — every task is validated with real test resources, not just schema checks
 
 
-## Contributing
+## Contributing a Benchmark Test
 
-All contributions and suggestions are welcome! See the contributing guide: [CONTRIBUTING.md](CONTRIBUTING.md).
+All contributions and suggestions are welcome. The most impactful way to contribute is to add a new benchmark task.
+
+### What a benchmark test consists of
+
+Each task is defined by three things:
+
+1. **A source policy** — the input the AI tool must convert or replicate.
+2. **Test fixtures** — `kyverno-test.yaml` and `resource.yaml` that prove the converted policy actually works.
+3. **An entry in `dataset/index.yaml`** — the metadata that ties everything together.
+
+### Option A: From upstream kyverno/policies (recommended)
+
+Upstream policies come with ready-made test fixtures, so this path requires the least manual work.
+
+**Step 1.** Add an entry to `dataset/kyverno-upstream-manifest.yaml`:
+
+```yaml
+- id: cp_my_new_policy
+  upstream_path: best-practices/my-policy/my-policy.yaml
+  sync_test: true
+```
+
+**Step 2.** Download the policy and its test fixtures:
+
+```bash
+python3 scripts/sync_kyverno_policies.py
+```
+
+This writes to `dataset/imported/kyverno-policies/` and `dataset/imported/kyverno-tests/`.
+
+**Step 3.** Add to `dataset/index.yaml`:
+
+```yaml
+- id: cp_my_new_policy
+  track: cluster-policy
+  task_type: convert
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  path: imported/kyverno-policies/cp_my_new_policy.yaml
+  kyverno_test_dir: imported/kyverno-tests/cp_my_new_policy
+  description: "what the policy enforces, in plain English"
+```
+
+**Step 4.** Verify it runs end-to-end:
+
+```bash
+./run-benchmark.sh --tool nctl --policy-id cp_my_new_policy --containerized
+```
+
+### Option B: Custom local policy
+
+Use this when the policy doesn't exist upstream or you're writing a generation task.
+
+**Step 1.** Place the source policy in `input/`:
+
+```
+input/my-custom-policy.yaml
+```
+
+**Step 2.** Create test fixtures:
+
+```
+dataset/local/my_custom_policy/
+├── kyverno-test.yaml
+└── resource.yaml
+```
+
+**`kyverno-test.yaml`** declares which resources the policy should accept and reject:
+
+```yaml
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: my-custom-policy
+policies:
+  - ../kyverno-policies/my_custom_policy.yaml
+resources:
+  - resource.yaml
+results:
+  - kind: Pod
+    policy: my-custom-policy
+    resources: [bad-pod]
+    result: fail
+  - kind: Pod
+    policy: my-custom-policy
+    resources: [good-pod]
+    result: pass
+```
+
+**`resource.yaml`** contains at least one resource that should be rejected and one that should be admitted:
+
+```yaml
+# Should be rejected by the policy
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod
+spec:
+  containers: [{name: nginx, image: nginx:latest}]
+---
+# Should be admitted by the policy
+apiVersion: v1
+kind: Pod
+metadata:
+  name: good-pod
+  labels:
+    app: nginx
+spec:
+  containers: [{name: nginx, image: nginx:1.27}]
+```
+
+**Step 3.** Add to `dataset/index.yaml`:
+
+```yaml
+- id: my_custom_policy
+  track: cluster-policy
+  task_type: convert            # convert | generate
+  difficulty: easy              # easy | medium | hard
+  expected_output_kind: ValidatingPolicy
+  path: local/my_custom_policy/source.yaml
+  kyverno_test_dir: local/my_custom_policy
+  description: "what the policy enforces, in plain English"
+```
+
+**Step 4.** Validate the source policy and run the benchmark:
+
+```bash
+python3 validate.py --input input/my-custom-policy.yaml
+./run-benchmark.sh --tool nctl --policy-id my_custom_policy --containerized
+```
+
+### Naming conventions
+
+| Element | Convention | Example |
+|---------|-----------|---------|
+| Policy ID | `<track_prefix>_<snake_case>` | `cp_require_labels` |
+| Track prefix | `cp_` ClusterPolicy, `gk_` Gatekeeper, `opa_`, `sentinel_`, `cleanup_` | `cp_require_ro_rootfs` |
+| Upstream policy file | `dataset/imported/kyverno-policies/<id>.yaml` | — |
+| Custom policy file | `dataset/local/<id>/source.yaml` | — |
+| Test fixtures | `dataset/imported/kyverno-tests/<id>/` or `dataset/local/<id>/` | — |
+
+### Before opening a PR
+
+- [ ] Source policy validates cleanly: `python3 validate.py --input <your-policy.yaml>`
+- [ ] Test fixtures include at least one pass and one fail resource
+- [ ] All required `index.yaml` fields are present: `id`, `track`, `task_type`, `difficulty`, `expected_output_kind`, `path`, `description`
+- [ ] End-to-end run completes without a crash: `./run-benchmark.sh --tool nctl --policy-id <id> --containerized`
+- [ ] Dashboard regenerates cleanly: `python3 reports/generate.py`
+- [ ] No secrets committed: verify with `git status`
+
+For full details on test architecture, adding a new tool runner, updating the leaderboard, and failure triage, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

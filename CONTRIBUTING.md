@@ -13,6 +13,7 @@ For a deep dive into how each validation layer works, see [`docs/testing.md`](do
 - [Adding a New Test Case](#adding-a-new-test-case)
 - [Stress Tests](#stress-tests)
 - [Adding a New Tool](#adding-a-new-tool)
+- [Adding Chainsaw Test-Generation Cases](#adding-chainsaw-test-generation-cases)
 - [Local Test Commands](#local-test-commands)
 - [Scoping Benchmark Runs](#scoping-benchmark-runs)
 - [CI-Equivalent Commands](#ci-equivalent-commands)
@@ -368,6 +369,61 @@ tools:
 ```bash
 ./run-benchmark.sh --tool mytool --policy-id cp_require_labels --containerized
 ```
+
+---
+
+## Adding Chainsaw Test-Generation Cases
+
+To add a new Chainsaw benchmark case without hardcoding a global prompt, add a
+new dataset row and optionally override the prompt only for that one row.
+
+### 1. Add a policy row in `dataset/index.yaml`
+
+Required fields for a Chainsaw generation case:
+
+- `task_type: generate_chainsaw_test`
+- `path`: source policy path (relative to `dataset/`)
+- `chainsaw_reference_dir`: reference Chainsaw suite directory (relative to `dataset/`)
+
+Optional field:
+
+- `prompt`: custom prompt text for only this row (if omitted, the shared
+  Chainsaw template in `runners/prompts.py` is used)
+
+Example:
+
+```yaml
+- id: ch_example_case
+  track: cluster-policy
+  task_type: generate_chainsaw_test
+  difficulty: medium
+  expected_output_kind: null
+  path: local/chainsaw-source-policy.yaml
+  chainsaw_reference_dir: local/chainsaw/ch_example_case
+  description: generate one Chainsaw pass/fail test set for this policy
+  prompt: |
+    You are generating Kubernetes end-to-end tests using Kyverno Chainsaw.
+    Create exactly two scenarios...
+```
+
+### 2. Add the reference Chainsaw file
+
+Create the reference suite under:
+
+`dataset/local/chainsaw/<id>/chainsaw-test.yaml`
+
+For the example above:
+
+`dataset/local/chainsaw/ch_example_case/chainsaw-test.yaml`
+
+### 3. Run only that one policy ID
+
+```bash
+python3 benchmark.py --task-type generate_chainsaw_test --tool nctl --policy-id <new_id>
+```
+
+This lets you add many Chainsaw cases with per-row prompts when needed, while
+keeping the default template reusable.
 
 ---
 

@@ -70,7 +70,8 @@ class NctlRunner(ToolRunner):
 
         repo_root = Path(__file__).resolve().parent.parent
         version = self._get_version()
-        output_check = dir_output_artifact(output_path)
+        config = config or {}
+        output_check = dir_output_artifact(output_path, task_type=config.get("task_type"))
         if output_check is None:
             output_path.parent.mkdir(parents=True, exist_ok=True)
 

@@ -4,10 +4,11 @@ Policy as Code Benchmark — main orchestrator.
 
   dataset → run tools → collect outputs → evaluate → store JSON → generate report
 
-Supports three task types:
+Supports four task types:
   - **convert** — source policy → converted output (schema+CEL + functional test)
   - **generate** — natural-language prompt → new policy (schema+CEL + functional test)
   - **generate_test** — source policy → kyverno-test.yaml + resources.yaml (schema + kyverno test + coverage)
+    - **generate_chainsaw_test** — source policy → chainsaw-test.yaml (+ manifests) (schema + chainsaw test + coverage)
 
 Usage:
   python3 benchmark.py                                   # all tools, all policies
@@ -18,6 +19,7 @@ Usage:
   python3 benchmark.py --difficulty stress               # stress tests only
   python3 benchmark.py --task-type generate              # generation tasks only
   python3 benchmark.py --task-type generate_test         # test-generation tasks only
+    python3 benchmark.py --task-type generate_chainsaw_test  # Chainsaw test-generation tasks only
   python3 benchmark.py --output-kind MutatingPolicy      # filter by target kind
   python3 benchmark.py --report                          # generate report from existing results
 """
@@ -41,6 +43,7 @@ except ImportError:
     sys.exit(1)
 
 from evaluators.evaluate import evaluate, validate_input
+from evaluators.chainsaw_validator import evaluate_chainsawgen
 from evaluators.error_summariser import summarise_errors
 from evaluators.testgen_validator import evaluate_testgen
 from runners.base import RunResult, ToolRunner
@@ -148,6 +151,7 @@ def _run_single(
     task_type = policy.get("task_type", "convert")
     is_generate = task_type == "generate"
     is_testgen = task_type == "generate_test"
+    is_chainsaw = task_type == "generate_chainsaw_test"
     expect_failure = policy.get("expect_failure", False)
 
     input_path: Path | None = None
@@ -168,8 +172,8 @@ def _run_single(
             "error": f"Dataset file not found: {input_path}.{hint}",
         }
 
-    # Validate input (skip for generation/test-gen tasks and stress tests)
-    if not is_generate and not is_testgen and not expect_failure and input_path:
+    # Validate input (skip for generation-style tasks and stress tests)
+    if not is_generate and not is_testgen and not is_chainsaw and not expect_failure and input_path:
         in_pass, in_errors = validate_input(
             track, input_path, use_kubectl=eval_config.get("kubectl_dry_run", True),
         )
@@ -184,7 +188,7 @@ def _run_single(
             }
 
     output_dir = REPO_ROOT / "output" / tool_name
-    if is_testgen:
+    if is_testgen or is_chainsaw:
         output_path = output_dir / policy_id  # directory, not a file
         output_path.mkdir(parents=True, exist_ok=True)
         # Copy source policy into the output dir so kyverno test can reference
@@ -244,7 +248,7 @@ def _run_single(
             output_path,
             prompt,
             timeout_seconds=timeout,
-            config=tool_config,
+            config={**tool_config, "task_type": task_type},
         )
 
         # Evaluate
@@ -252,6 +256,11 @@ def _run_single(
         if policy.get("kyverno_test_dir"):
             # Paths are relative to dataset/ (same convention as policy path)
             kyverno_test_dir = REPO_ROOT / "dataset" / policy["kyverno_test_dir"]
+
+        chainsaw_reference_dir = None
+        chainsaw_ref_rel = policy.get("chainsaw_reference_dir") or policy.get("chainsaw_test_dir")
+        if chainsaw_ref_rel:
+            chainsaw_reference_dir = REPO_ROOT / "dataset" / chainsaw_ref_rel
 
         eval_result: dict = {}
         if is_testgen:
@@ -268,6 +277,24 @@ def _run_single(
                     "testgen_composite_pass": False,
                     "testgen_schema_pass": False,
                     "testgen_errors": ["No output directory produced by tool"],
+                    "schema_pass": False,
+                    "semantic_pass": False,
+                    "semantic_skipped": False,
+                    "semantic_errors": ["No output produced by tool"],
+                }
+        elif is_chainsaw:
+            if run_result.success and output_path.is_dir():
+                eval_result = evaluate_chainsawgen(
+                    generated_dir=output_path,
+                    source_policy=input_path or output_path / "policy.yaml",
+                    reference_dir=chainsaw_reference_dir,
+                    timeout_sec=timeout,
+                )
+            else:
+                eval_result = {
+                    "chainsaw_composite_pass": False,
+                    "chainsaw_schema_pass": False,
+                    "chainsaw_errors": ["No output directory produced by tool"],
                     "schema_pass": False,
                     "semantic_pass": False,
                     "semantic_skipped": False,
@@ -294,6 +321,8 @@ def _run_single(
 
         if is_testgen:
             success = run_result.success and eval_result.get("testgen_composite_pass", False)
+        elif is_chainsaw:
+            success = run_result.success and eval_result.get("chainsaw_composite_pass", False)
         else:
             schema_ok = eval_result.get("schema_pass", False)
             semantic = eval_result.get("semantic_pass")
@@ -301,8 +330,13 @@ def _run_single(
             functional_ok = semantic_skipped or (semantic is True)
             success = run_result.success and schema_ok and functional_ok
 
-        # For test-gen tasks the canonical output file is kyverno-test.yaml inside the dir.
-        output_yaml_path = (output_path / "kyverno-test.yaml") if is_testgen else output_path
+        # For dir-output tasks, show the canonical manifest file in diagnostics.
+        if is_testgen:
+            output_yaml_path = output_path / "kyverno-test.yaml"
+        elif is_chainsaw:
+            output_yaml_path = output_path / "chainsaw-test.yaml"
+        else:
+            output_yaml_path = output_path
 
         # Include full YAML output on failure for diagnostics
         yaml_preview = None
@@ -471,7 +505,7 @@ def main() -> int:
     parser.add_argument("--track", help="Filter by conversion track")
     parser.add_argument("--policy-id", nargs="+", help="Run one or more policies by ID")
     parser.add_argument("--difficulty", help="Filter by difficulty (easy, medium, hard, stress)")
-    parser.add_argument("--task-type", choices=["convert", "generate", "generate_test"], help="Filter by task type")
+    parser.add_argument("--task-type", choices=["convert", "generate", "generate_test", "generate_chainsaw_test"], help="Filter by task type")
     parser.add_argument("--output-kind", help="Filter by expected output kind (e.g. MutatingPolicy)")
     parser.add_argument("--max-attempts", type=int, default=1, help="Max attempts per policy (iterative improvement)")
     parser.add_argument("--workers", type=int, default=1, help="Parallel workers per tool (default: 1 = sequential)")

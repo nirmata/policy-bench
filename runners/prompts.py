@@ -90,6 +90,12 @@ _TESTGEN_DOCS_CLAUSE = (
     "\n- https://github.com/kyverno/kyverno-policies"
 )
 
+_CHAINSAW_DOCS_CLAUSE = (
+    f"\n\nLook up Kyverno {KYVERNO_VERSION} Chainsaw examples before writing the test:"
+    "\n- https://kyverno.github.io/chainsaw/latest/"
+    "\n- https://github.com/kyverno/chainsaw"
+)
+
 # ---------------------------------------------------------------------------
 # Test-generation prompt (existing policy → kyverno-test.yaml + resources.yaml)
 # ---------------------------------------------------------------------------
@@ -112,6 +118,77 @@ _TESTGEN_PROMPT = (
 )
 
 
+_CHAINSAW_TESTGEN_PROMPT = (
+    "You are generating Kubernetes end-to-end tests using Kyverno Chainsaw.\n\n"
+    "Create a clean test setup with exactly two scenarios to verify Kyverno Helm deployment.\n\n"
+    "Source policy path: {input_path}\n"
+    "Output directory: {output_path}\n"
+    "(The source policy is copied into the output directory as policy.yaml.)\n\n"
+    "Goals:\n"
+    "- Scenario A (pass): Helm install succeeds and Kyverno becomes healthy.\n"
+    "- Scenario A must also include a policy enforcement smoke test after install (one denied and one allowed resource) and it must pass.\n"
+    "- Scenario B (fail): Helm install is intentionally broken by invalid image override and must fail readiness.\n"
+    "- Scenario B must also include a resource pressure failure (unschedulable Kyverno pods via impossible CPU/memory requests/limits) and it must fail as expected.\n\n"
+    "Requirements:\n"
+    "- Generate all required Chainsaw assets for both scenarios.\n"
+    "- Use separate namespaces and release names:\n"
+    "  - pass namespace: kyverno-pass\n"
+    "  - fail namespace: kyverno-fail\n"
+    "  - pass release: kyverno-pass\n"
+    "  - fail release: kyverno-fail\n"
+    "- Use Helm chart kyverno/kyverno.\n"
+    "- For pass scenario, use valid values and wait for readiness.\n"
+    "- For pass scenario, apply a simple Kyverno validating policy and verify enforcement behavior (deny bad resource, allow good resource).\n"
+    "- For fail scenario, override image repository/tag to an invalid value so pods hit image pull errors.\n"
+    "- For fail scenario, include a resource-pressure variant with unrealistic resource settings that leads to Pending/Unschedulable pods.\n"
+    "What to generate:\n"
+    "- A Chainsaw test suite for pass scenario.\n"
+    "- A Chainsaw test suite for fail scenario.\n"
+    "- Any values files, manifests, and helper scripts needed to run both tests.\n"
+    "- A simple runner script that executes both Chainsaw tests and prints clear PASS/FAIL summary.\n"
+    "- Ensure {output_path}/chainsaw-test.yaml exists as the primary test entry file.\n\n"
+    "Assertions required:\n"
+    "- Pass scenario assertions:\n"
+    "  - Helm release status is deployed.\n"
+    "  - Kyverno controller pod(s) are Ready.\n"
+    "  - No CrashLoopBackOff or ImagePullBackOff in kyverno-pass namespace.\n"
+    "  - Policy enforcement smoke test passes (bad resource denied, good resource allowed).\n"
+    "- Fail scenario assertions:\n"
+    "  - Helm install or rollout readiness fails as expected.\n"
+    "  - At least one Kyverno pod in kyverno-fail shows ErrImagePull or ImagePullBackOff.\n"
+    "  - At least one Kyverno pod in kyverno-fail is Pending with Unschedulable events caused by impossible resource settings.\n"
+    "  - Failure is marked as expected behavior, not an unexpected infra failure.\n\n"
+    "Output format:\n"
+    "- First, show the test matrix with the two scenarios and expected outcomes.\n"
+    "- Then provide generated file contents.\n"
+    "- Then provide exact commands to run:\n"
+    "  - helm repo add/update\n"
+    "  - chainsaw test commands\n"
+    "- Finally, provide expected output snippets for both PASS and expected FAIL.\n\n"
+    "Important:\n"
+    "- Keep everything reproducible on a local cluster.\n"
+    "- Do not add extra scenarios.\n"
+    "- Do not leave placeholders. Fill concrete names and values.\n\n"
+    "Execution and auto-fix loop (mandatory):\n"
+    "- After generating the test assets, run the Chainsaw tests yourself.\n"
+    "- Use these commands (or equivalent) and include the actual outputs:\n"
+    "  - `chainsaw test --test-dir {output_path}`\n"
+    "  - If you split scenarios, run each scenario test command explicitly.\n"
+    "- If any test fails, you must:\n"
+    "  - Diagnose the root cause from test output/events/logs.\n"
+    "  - Fix the generated Chainsaw files/scripts/values.\n"
+    "  - Re-run the failed test(s).\n"
+    "  - Repeat until results match expected behavior:\n"
+    "    - pass scenario passes\n"
+    "    - fail scenario is asserted as an expected failure condition\n"
+    "- Do not stop at first failure. Perform at least one fix-and-rerun cycle when failures exist.\n"
+    "- In the final response, include:\n"
+    "  - What failed.\n"
+    "  - What you changed to fix it.\n"
+    "  - Final test results after re-run."
+)
+
+
 def build_prompt(
     track: str,
     input_path: str | None,
@@ -126,7 +203,8 @@ def build_prompt(
 
     For *convert* tasks, looks up the template by (track, output_kind).
     For *generate* tasks, uses the generation template with *description*.
-    For *generate_test* tasks, uses the test-generation template.
+    For *generate_test* tasks, uses the Kyverno CLI test-generation template.
+    For *generate_chainsaw_test* tasks, uses the Chainsaw test-generation template.
 
     When *include_docs* is True, appends a clause pointing the tool at the
     canonical Kyverno docs and the community policy repo.
@@ -138,6 +216,15 @@ def build_prompt(
         )
         if include_docs:
             prompt += _TESTGEN_DOCS_CLAUSE
+        return prompt
+
+    if task_type == "generate_chainsaw_test":
+        prompt = _CHAINSAW_TESTGEN_PROMPT.format(
+            input_path=input_path or "the provided policy",
+            output_path=output_path,
+        )
+        if include_docs:
+            prompt += _CHAINSAW_DOCS_CLAUSE
         return prompt
 
     if task_type == "generate":

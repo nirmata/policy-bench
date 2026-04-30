@@ -4,9 +4,9 @@
 #   <source-policy-path> is "none" for generation tasks.
 #   Exit 0 on success, 1 on failure.
 #   The converted/generated policy must be written to <output-path>.
-#   For generate_test tasks, BENCH_OUTPUT_KIND=dir is set and OUTPUT is a
-#   directory that already contains policy.yaml; the tool should write
-#   kyverno-test.yaml and resources.yaml into it.
+#   For directory-output tasks (e.g. generate_test, generate_chainsaw_test),
+#   BENCH_OUTPUT_KIND=dir is set and OUTPUT is a directory that already
+#   contains policy.yaml; the tool should write the expected artifact there.
 #
 # Requires: Cursor Team/Pro plan. Install CLI: curl https://cursor.com/install | bash
 # Auth: agent login (one-time browser auth)
@@ -31,8 +31,9 @@ fi
   --force 2>&1
 
 if [ "${BENCH_OUTPUT_KIND:-file}" = "dir" ]; then
-  if [ ! -f "${OUTPUT}/kyverno-test.yaml" ]; then
-    echo "ERROR: Cursor agent did not produce kyverno-test.yaml in $OUTPUT" >&2
+  EXPECTED_ARTIFACT="${BENCH_OUTPUT_ARTIFACT:-kyverno-test.yaml}"
+  if [ ! -f "${OUTPUT}/${EXPECTED_ARTIFACT}" ]; then
+    echo "ERROR: Cursor agent did not produce ${EXPECTED_ARTIFACT} in $OUTPUT" >&2
     exit 1
   fi
 else

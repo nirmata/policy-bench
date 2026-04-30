@@ -71,6 +71,10 @@ task_types:
     description: "Generate a Kyverno CLI test suite for an existing policy"
     requires_input: true
     evaluations: [schema, semantic, coverage]
+  generate_chainsaw_test:
+    description: "Generate a Kyverno Chainsaw test suite for an existing policy"
+    requires_input: true
+    evaluations: [schema, semantic, coverage]
 
 evaluation:
   skip_kyverno_test: false

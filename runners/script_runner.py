@@ -57,10 +57,12 @@ class ScriptRunner(ToolRunner):
         config: dict | None = None,
     ) -> RunResult:
         repo_root = Path(__file__).resolve().parent.parent
+        config = config or {}
+        task_type = config.get("task_type")
 
         # dir_output_artifact returns a path if output_path is a pre-created
         # directory (generate_test tasks), None for single-file tasks.
-        output_check = dir_output_artifact(output_path)
+        output_check = dir_output_artifact(output_path, task_type=task_type)
         is_dir_output = output_check is not None
         if not is_dir_output:
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -69,7 +71,13 @@ class ScriptRunner(ToolRunner):
         cmd = [str(self._script), source_arg, str(output_path), prompt]
 
         # Signal dir-output mode to the shell script via environment variable.
-        env = {**os.environ, "BENCH_OUTPUT_KIND": "dir" if is_dir_output else "file"}
+        env = {
+            **os.environ,
+            "BENCH_OUTPUT_KIND": "dir" if is_dir_output else "file",
+            "BENCH_TASK_TYPE": str(task_type or "convert"),
+        }
+        if output_check is not None:
+            env["BENCH_OUTPUT_ARTIFACT"] = output_check.name
 
         start = time.monotonic()
         try:

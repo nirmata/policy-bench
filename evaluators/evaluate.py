@@ -26,6 +26,8 @@ from .input_validators import (
     opa,
     sentinel,
     cleanup,
+    dockerfile,
+    terraform,
 )
 
 INPUT_VALIDATORS = {
@@ -34,6 +36,8 @@ INPUT_VALIDATORS = {
     "opa": opa.validate,
     "sentinel": sentinel.validate,
     "cleanup": cleanup.validate,
+    "dockerfile": dockerfile.validate,
+    "terraform": terraform.validate,
 }
 
 

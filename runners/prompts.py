@@ -77,6 +77,29 @@ _GENERATION_PROMPT = (
     "that {description} Write the policy to {output_path}."
 )
 
+# Track-specific generation prompts for non-Kubernetes resource types.
+# These use apiVersion v1alpha1 and require evaluation.mode: JSON.
+_TRACK_GENERATION_PROMPTS: dict[str, str] = {
+    "dockerfile": (
+        "Write a Kyverno {kyverno_version} ValidatingPolicy "
+        "(apiVersion: policies.kyverno.io/v1alpha1) that evaluates Dockerfiles "
+        "represented as parsed JSON (object.Stages contains the build stages and commands). "
+        "The policy must set evaluation.mode: JSON, match all resource types "
+        "(apiGroups: [\"*\"], resources: [\"*\"]), and use matchConditions to identify "
+        "Dockerfile resources by checking has(object.Stages). "
+        "The policy {description} Write the policy to {output_path}."
+    ),
+    "terraform": (
+        "Write a Kyverno {kyverno_version} ValidatingPolicy "
+        "(apiVersion: policies.kyverno.io/v1alpha1) that evaluates Terraform plan JSON files "
+        "(object.planned_values.root_module.resources contains the planned resources). "
+        "The policy must set evaluation.mode: JSON, match all resource types "
+        "(apiGroups: [\"*\"], resources: [\"*\"]), and use matchConditions to identify "
+        "Terraform plans by checking has(object.planned_values) && has(object.terraform_version). "
+        "The policy {description} Write the policy to {output_path}."
+    ),
+}
+
 
 _DOCS_CLAUSE = (
     f"\n\nLook up Kyverno {KYVERNO_VERSION} documentation and examples before writing the policy:"
@@ -286,7 +309,8 @@ def build_prompt(
         return prompt
 
     if task_type == "generate":
-        prompt = _GENERATION_PROMPT.format(
+        template = _TRACK_GENERATION_PROMPTS.get(track, _GENERATION_PROMPT)
+        prompt = template.format(
             kyverno_version=KYVERNO_VERSION,
             output_kind=output_kind or "ValidatingPolicy",
             description=description or "enforces the desired policy.",

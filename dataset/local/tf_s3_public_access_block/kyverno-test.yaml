@@ -1,0 +1,19 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: block-s3-public-access-setting
+policies:
+  - policy.yaml
+resources:
+  - resource.yaml
+results:
+  - policy: block-s3-public-access-setting
+    kind: Plan
+    resources:
+      - good-plan
+    result: pass
+  - policy: block-s3-public-access-setting
+    kind: Plan
+    resources:
+      - bad-plan
+    result: fail

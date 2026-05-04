@@ -1,0 +1,33 @@
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: good-plan
+terraform_version: "1.6.6"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_s3_bucket
+        values:
+          bucket: my-versioned-bucket
+      - type: aws_s3_bucket_versioning
+        values:
+          bucket: my-versioned-bucket
+          versioning_configuration:
+            - status: Enabled
+---
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: bad-plan
+terraform_version: "1.6.6"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_s3_bucket
+        values:
+          bucket: my-unversioned-bucket
+      - type: aws_s3_bucket_versioning
+        values:
+          bucket: my-unversioned-bucket
+          versioning_configuration:
+            - status: Suspended

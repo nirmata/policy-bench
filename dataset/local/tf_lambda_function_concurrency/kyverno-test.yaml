@@ -1,0 +1,19 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: check-function-concurrency
+policies:
+  - policy.yaml
+resources:
+  - resource.yaml
+results:
+  - policy: check-function-concurrency
+    kind: Plan
+    resources:
+      - good-plan
+    result: pass
+  - policy: check-function-concurrency
+    kind: Plan
+    resources:
+      - bad-plan
+    result: fail

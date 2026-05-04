@@ -1,0 +1,19 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: check-lambda-public-access
+policies:
+  - policy.yaml
+resources:
+  - resource.yaml
+results:
+  - policy: check-lambda-public-access
+    kind: Plan
+    resources:
+      - good-plan
+    result: pass
+  - policy: check-lambda-public-access
+    kind: Plan
+    resources:
+      - bad-plan
+    result: fail

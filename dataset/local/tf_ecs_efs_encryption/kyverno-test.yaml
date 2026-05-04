@@ -1,0 +1,19 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: validate-efs-volume-encryption
+policies:
+  - policy.yaml
+resources:
+  - resource.yaml
+results:
+  - policy: validate-efs-volume-encryption
+    kind: Plan
+    resources:
+      - good-plan
+    result: pass
+  - policy: validate-efs-volume-encryption
+    kind: Plan
+    resources:
+      - bad-plan
+    result: fail

@@ -1,0 +1,37 @@
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: good-plan
+terraform_version: "1.6.6"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_s3_bucket
+        values:
+          bucket: my-private-bucket
+      - type: aws_s3_bucket_public_access_block
+        values:
+          bucket: my-private-bucket
+          block_public_acls: true
+          block_public_policy: true
+          ignore_public_acls: true
+          restrict_public_buckets: true
+---
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: bad-plan
+terraform_version: "1.6.6"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_s3_bucket
+        values:
+          bucket: my-public-bucket
+      - type: aws_s3_bucket_public_access_block
+        values:
+          bucket: my-public-bucket
+          block_public_acls: false
+          block_public_policy: true
+          ignore_public_acls: true
+          restrict_public_buckets: true

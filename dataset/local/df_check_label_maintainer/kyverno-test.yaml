@@ -1,0 +1,19 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: check-label-maintainer
+policies:
+  - policy.yaml
+resources:
+  - resource.yaml
+results:
+  - policy: check-label-maintainer
+    kind: Dockerfile
+    resources:
+      - good-dockerfile
+    result: pass
+  - policy: check-label-maintainer
+    kind: Dockerfile
+    resources:
+      - bad-dockerfile
+    result: fail

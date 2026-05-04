@@ -1,0 +1,25 @@
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: good-plan
+terraform_version: "1.6.6"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_s3_bucket_policy
+        values:
+          bucket: my-secure-bucket
+          policy: '{"Statement":[{"Principal":{"AWS":"arn:aws:iam::123456789012:root"},"Effect":"Allow","Action":"s3:GetObject","Resource":"arn:aws:s3:::my-secure-bucket/*"}]}'
+---
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: bad-plan
+terraform_version: "1.6.6"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_s3_bucket_policy
+        values:
+          bucket: my-public-policy-bucket
+          policy: '{"Statement":[{"Principal":"*","Effect":"Allow","Action":"s3:GetObject","Resource":"arn:aws:s3:::my-public-policy-bucket/*"}]}'

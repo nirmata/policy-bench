@@ -1,0 +1,27 @@
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: good-plan
+terraform_version: "1.8.4"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_lambda_function_url
+        name: my_lambda_url
+        values:
+          function_name: my-lambda-function
+          authorization_type: "AWS_IAM"
+---
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: bad-plan
+terraform_version: "1.8.4"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_lambda_function_url
+        name: my_lambda_url
+        values:
+          function_name: my-lambda-function
+          authorization_type: "NONE"

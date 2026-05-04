@@ -1,0 +1,28 @@
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: good-plan
+terraform_version: "1.6.6"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_s3_bucket
+        values:
+          bucket: my-logged-bucket
+      - type: aws_s3_bucket_logging
+        values:
+          bucket: my-logged-bucket
+          target_bucket: my-log-storage-bucket
+          target_prefix: log/
+---
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: bad-plan
+terraform_version: "1.6.6"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_s3_bucket
+        values:
+          bucket: my-unlogged-bucket

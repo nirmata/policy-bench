@@ -1,0 +1,19 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: check-imds-v1
+policies:
+  - policy.yaml
+resources:
+  - resource.yaml
+results:
+  - policy: check-imds-v1
+    kind: Plan
+    resources:
+      - good-plan
+    result: pass
+  - policy: check-imds-v1
+    kind: Plan
+    resources:
+      - bad-plan
+    result: fail

@@ -10,6 +10,7 @@ nctl is the subject of the benchmark.  This harness:
 
 from __future__ import annotations
 
+import select
 import shutil
 import subprocess
 import sys
@@ -71,6 +72,7 @@ class NctlRunner(ToolRunner):
         repo_root = Path(__file__).resolve().parent.parent
         version = self._get_version()
         config = config or {}
+        stream_logs = bool(config.get("stream_logs", True))
         output_check = dir_output_artifact(output_path, task_type=config.get("task_type"))
         if output_check is None:
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -86,27 +88,79 @@ class NctlRunner(ToolRunner):
 
         # --- step 3: measure wall-clock time ---
         start = time.monotonic()
+        if output_path.is_dir():
+            run_log_path = output_path / "nctl-agent.log"
+        else:
+            run_log_path = output_path.with_suffix(".nctl.log")
+        run_log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        log_chunks: list[str] = []
+        returncode = -1
         try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True, text=True,
-                timeout=timeout_seconds,
-                cwd=str(repo_root),
-            )
-            elapsed = time.monotonic() - start
-        except subprocess.TimeoutExpired:
+            with run_log_path.open("w", encoding="utf-8") as logf:
+                proc = subprocess.Popen(
+                    cmd,
+                    cwd=str(repo_root),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                )
+
+                assert proc.stdout is not None
+                while True:
+                    elapsed = time.monotonic() - start
+                    if elapsed > timeout_seconds:
+                        proc.kill()
+                        tail = proc.stdout.read() or ""
+                        if tail:
+                            log_chunks.append(tail)
+                            logf.write(tail)
+                            logf.flush()
+                        return RunResult(
+                            output_path=output_path,
+                            conversion_time_seconds=elapsed,
+                            success=False,
+                            error=f"nctl timed out after {timeout_seconds}s",
+                            tool_version=version,
+                            raw_log="".join(log_chunks),
+                            extra={"run_log_path": str(run_log_path)},
+                        )
+
+                    ready, _, _ = select.select([proc.stdout], [], [], 0.5)
+                    if ready:
+                        line = proc.stdout.readline()
+                        if line:
+                            log_chunks.append(line)
+                            logf.write(line)
+                            logf.flush()
+                            if stream_logs:
+                                print(line, end="")
+
+                    if proc.poll() is not None:
+                        tail = proc.stdout.read() or ""
+                        if tail:
+                            log_chunks.append(tail)
+                            logf.write(tail)
+                            logf.flush()
+                            if stream_logs:
+                                print(tail, end="")
+                        returncode = proc.returncode
+                        break
+        except Exception as exc:
             return RunResult(
                 output_path=output_path,
                 conversion_time_seconds=time.monotonic() - start,
                 success=False,
-                error=f"nctl timed out after {timeout_seconds}s",
+                error=f"nctl runner error: {exc}",
                 tool_version=version,
             )
 
-        log = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        elapsed = time.monotonic() - start
+        log = "".join(log_chunks)
         output_check = output_check or output_path
         success = (
-            proc.returncode == 0
+            returncode == 0
             and output_check.exists()
             and self._AGENT_OK in log
         )
@@ -132,7 +186,7 @@ class NctlRunner(ToolRunner):
             output_path=output_path,
             conversion_time_seconds=round(elapsed, 3),
             success=success,
-            error=None if success else f"nctl exited {proc.returncode}",
+            error=None if success else f"nctl exited {returncode}",
             tool_version=version,
             model="nctl-builtin",
             input_tokens=input_toks,
@@ -140,5 +194,5 @@ class NctlRunner(ToolRunner):
             cost_usd=round(cost, 6),
             tokens_estimated=True,
             raw_log=log,
-            extra=extra,
+            extra={**extra, "run_log_path": str(run_log_path)},
         )

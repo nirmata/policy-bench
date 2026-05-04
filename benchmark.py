@@ -394,6 +394,7 @@ def _run_single(
             "input_snippet": input_snippet,
             "output_yaml": output_yaml,
             "raw_log": run_result.raw_log,
+            **(run_result.extra or {}),
         }
 
         if success or attempt == max_attempts:

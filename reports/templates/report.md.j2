@@ -40,7 +40,7 @@ Generated: {{ agg.generated_at }}
 {% set failures = agg.results | selectattr("success", "equalto", false) | list -%}
 {% if failures -%}
 {% for f in failures -%}
-- `{{ f.tool }}` / `{{ f.policy_id | default("unknown") }}`: {{ f.error | default("", true) or ((f.schema_errors or []) | join("; ")) or ((f.semantic_errors or []) | join("; ")[:100]) or "FAIL" }}
+- `{{ f.tool }}` / `{{ f.policy_id | default("unknown") }}`: {{ f.error | default("", true) or ((f.schema_errors or []) | join("; ")) or (((f.semantic_errors or []) | join("; "))[:100]) or "FAIL" }}
 {% endfor -%}
 {% else -%}
 No failures.

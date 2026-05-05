@@ -591,7 +591,25 @@ def main() -> int:
             shared_runner.setup(tcfg)
 
         def _execute_job(policy: dict) -> dict:
-            return _run_single(
+            # Pre-write an "in-progress" stub so a killed/timed-out run still
+            # leaves a record on disk. Overwritten on completion below.
+            stub_run_id = f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S_%f')}_{tool_name}_{policy['id']}"
+            stub = {
+                "run_id": stub_run_id,
+                "tool": tool_name,
+                "policy_id": policy["id"],
+                "track": policy.get("track", "unknown"),
+                "task_type": policy.get("task_type", "convert"),
+                "status": "in_progress",
+                "started_at": datetime.now(timezone.utc).isoformat(),
+            }
+            try:
+                (results_dir / f"{stub_run_id}.json").write_text(
+                    json.dumps(stub, indent=2), encoding="utf-8"
+                )
+            except OSError:
+                pass
+            result = _run_single(
                 tool_name,
                 tcfg,
                 policy,
@@ -602,6 +620,12 @@ def main() -> int:
                 persistent=args.persistent,
                 runner=shared_runner,
             )
+            # Remove the stub now that the real per-run JSON will be written.
+            try:
+                (results_dir / f"{stub_run_id}.json").unlink(missing_ok=True)
+            except OSError:
+                pass
+            return result
 
         tool_results: list[dict] = []
 

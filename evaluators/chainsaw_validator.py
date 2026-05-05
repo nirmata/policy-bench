@@ -67,10 +67,16 @@ def evaluate_chainsawgen(
     manifest_text = ""
     try:
         manifest_text = test_manifest.read_text(encoding="utf-8")
-        parsed_doc = yaml.safe_load(manifest_text)
-        if parsed_doc is None:
+        # Accept either a single Test document or a multi-doc YAML containing
+        # multiple Test documents (a valid Chainsaw layout). For schema-level
+        # introspection we keep `parsed_doc` as the first non-empty document;
+        # `_count_scenarios` already understands multi-doc lists.
+        all_docs = [d for d in yaml.safe_load_all(manifest_text) if d]
+        if not all_docs:
             errors.append("chainsaw-test.yaml is empty")
             schema_pass = False
+        else:
+            parsed_doc = all_docs if len(all_docs) > 1 else all_docs[0]
     except Exception as exc:
         errors.append(f"Failed to parse chainsaw-test.yaml: {exc}")
         schema_pass = False
@@ -179,12 +185,37 @@ def _run_functional_validation(
         )
 
     print(f"[chainsaw] Single-suite mode (no pass/ or fail/ subdirs)", flush=True)
+    # If chainsaw-test.yaml contains multiple Test docs we MUST force serial
+    # execution; otherwise concurrent helm installs into the same cluster
+    # collide on shared CRDs ("ownership metadata" errors).
+    extra_args: list[str] = []
+    test_manifest = generated_dir / "chainsaw-test.yaml"
+    if test_manifest.exists() and yaml is not None:
+        try:
+            docs = [
+                d for d in yaml.safe_load_all(test_manifest.read_text(encoding="utf-8")) if d
+            ]
+            if len(docs) > 1:
+                print(
+                    f"[chainsaw] Multi-doc Test manifest detected ({len(docs)} docs) — forcing --parallel 1",
+                    flush=True,
+                )
+                extra_args = ["--parallel", "1"]
+        except Exception:
+            pass
+    # Pre-clean known benchmark state so a previous interrupted run can't
+    # leave kyverno releases/CRDs that collide with this attempt.
+    print(f"[chainsaw] Pre-cleaning known benchmark state...", flush=True)
+    _cleanup_known_benchmark_state()
+    _delete_kyverno_managed_webhooks()
+    print(f"[chainsaw] Pre-clean done", flush=True)
     return _run_single_chainsaw_test(
         chainsaw_bin=chainsaw_bin,
         test_dir=generated_dir,
         cwd=generated_dir,
         timeout_sec=timeout_sec,
         label=str(generated_dir),
+        extra_args=extra_args,
     )
 
 
@@ -449,19 +480,21 @@ def _run_single_chainsaw_test(
     cwd: Path,
     timeout_sec: int,
     label: str,
+    extra_args: list[str] | None = None,
 ) -> tuple[bool, list[str]]:
     import sys
 
     test_dir = test_dir.resolve()
     cwd = cwd.resolve()
 
-    header = f"\n{'=' * 70}\n[chainsaw] Running: {label}\n[chainsaw] Dir:     {test_dir}\n[chainsaw] Cmd:     {chainsaw_bin} test {test_dir}\n[chainsaw] Timeout: {timeout_sec}s\n{'=' * 70}"
+    cmd = [chainsaw_bin, "test", *(extra_args or []), str(test_dir)]
+    header = f"\n{'=' * 70}\n[chainsaw] Running: {label}\n[chainsaw] Dir:     {test_dir}\n[chainsaw] Cmd:     {' '.join(cmd)}\n[chainsaw] Timeout: {timeout_sec}s\n{'=' * 70}"
     print(header, flush=True)
 
     captured: list[str] = []
     try:
         proc = subprocess.Popen(
-            [chainsaw_bin, "test", str(test_dir)],
+            cmd,
             cwd=str(cwd),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,

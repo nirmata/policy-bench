@@ -174,8 +174,12 @@ def _run_functional_validation(
     # Running `chainsaw test` from the parent directory causes Chainsaw to
     # discover pass/ and fail/ suites together, which executes them in one run
     # and can make cluster-scoped Helm installs interfere with each other.
-    # When both scenario directories exist, validate them serially instead.
-    if pass_dir.is_dir() and fail_dir.is_dir():
+    # When both scenario directories exist AND each contains its own
+    # chainsaw-test.yaml, validate them serially instead. Subdirs that hold
+    # only values/manifests (no Test docs) are NOT scenarios.
+    pass_has_test = (pass_dir / "chainsaw-test.yaml").exists()
+    fail_has_test = (fail_dir / "chainsaw-test.yaml").exists()
+    if pass_dir.is_dir() and fail_dir.is_dir() and pass_has_test and fail_has_test:
         print(f"[chainsaw] Found pass/ and fail/ scenarios — running serially", flush=True)
         return _run_serial_scenarios(
             chainsaw_bin=chainsaw_bin,
@@ -525,6 +529,12 @@ def _run_single_chainsaw_test(
         return False, [f"chainsaw test timed out after {timeout_sec}s for {label}"]
 
     if proc.returncode == 0:
+        # Chainsaw exits 0 when it finds zero tests in a directory; treat that
+        # as a failure (the suite is malformed / mis-located).
+        full_out = "".join(captured)
+        if "Passed  tests 0" in full_out and "Failed  tests 0" in full_out and "Skipped tests 0" in full_out:
+            print(f"[chainsaw] {label}: FAIL (no tests found in {test_dir})", flush=True)
+            return False, [f"chainsaw found zero tests in {test_dir} (missing chainsaw-test.yaml at this path?)"]
         print(f"[chainsaw] {label}: PASS", flush=True)
         return True, []
 

@@ -37,6 +37,7 @@ from typing import IO
 from .base import (
     RunResult,
     ToolRunner,
+    dir_output_artifact,
     estimate_cost,
     estimate_tokens,
 )
@@ -214,7 +215,7 @@ class ContainerRunner(ToolRunner):
         config: dict | None = None,
     ) -> RunResult:
         if self._persistent:
-            return self._run_persistent(input_path, output_path, prompt, timeout_seconds)
+            return self._run_persistent(input_path, output_path, prompt, timeout_seconds, config)
         return self._run_ephemeral(input_path, output_path, prompt, timeout_seconds, config)
 
     # ------------------------------------------------------------------
@@ -227,6 +228,7 @@ class ContainerRunner(ToolRunner):
         output_path: Path,
         prompt: str,
         timeout_seconds: int,
+        config: dict | None = None,
     ) -> RunResult:
         cid = self._container_id
         if not cid:
@@ -238,8 +240,16 @@ class ContainerRunner(ToolRunner):
                 model=f"{self.name}-container",
             )
 
+        config = config or {}
+        task_type = config.get("task_type")
+        host_output_check = dir_output_artifact(output_path, task_type=task_type) or output_path
+        is_dir_output = host_output_check != output_path
+        container_output_check = (
+            f"{_CONTAINER_OUTPUT_DIR}/{host_output_check.name}" if is_dir_output else _CONTAINER_OUTPUT
+        )
+
         is_generate = not input_path or not input_path.is_file() or input_path == output_path
-        container_prompt = self._rewrite_prompt(prompt, input_path, output_path)
+        container_prompt = self._rewrite_prompt(prompt, input_path, output_path, task_type=task_type)
 
         # Clean workspace from previous task: remove old input + output.
         # Everything else the agent created (CLAUDE.md, notes, etc.) is preserved.
@@ -385,19 +395,22 @@ class ContainerRunner(ToolRunner):
             )
 
         # Extract output
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if is_dir_output:
+            output_path.mkdir(parents=True, exist_ok=True)
+        else:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
         cp_out = subprocess.run(
-            ["docker", "cp", f"{cid}:{_CONTAINER_OUTPUT}", str(output_path)],
+            ["docker", "cp", f"{cid}:{container_output_check}", str(host_output_check)],
             capture_output=True, text=True, timeout=30,
         )
 
-        has_output = cp_out.returncode == 0 and output_path.is_file()
+        has_output = cp_out.returncode == 0 and host_output_check.is_file()
         success = exec_proc.returncode == 0 and has_output
 
         out_text = ""
         if has_output:
             try:
-                out_text = output_path.read_text(encoding="utf-8")
+                out_text = host_output_check.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError) as exc:
                 print(f"  Warning: could not read output: {exc}", file=sys.stderr)
                 success = False
@@ -418,7 +431,7 @@ class ContainerRunner(ToolRunner):
                 error = f"Tool exited {exec_proc.returncode}: {err_snippet}"
             elif not has_output:
                 cp_snippet = (cp_out.stderr or cp_out.stdout or "").strip()[:500]
-                error = f"Tool exited 0 but no output file was written ({cp_snippet or 'no details'})"
+                error = f"Tool exited 0 but no output file was written to {host_output_check} ({cp_snippet or 'no details'})"
 
         return RunResult(
             output_path=output_path,
@@ -448,8 +461,15 @@ class ContainerRunner(ToolRunner):
         config = config or {}
         container_id = None
 
+        task_type = config.get("task_type")
+        host_output_check = dir_output_artifact(output_path, task_type=task_type) or output_path
+        is_dir_output = host_output_check != output_path
+        container_output_check = (
+            f"{_CONTAINER_OUTPUT_DIR}/{host_output_check.name}" if is_dir_output else _CONTAINER_OUTPUT
+        )
+
         is_generate = not input_path or not input_path.is_file() or input_path == output_path
-        container_prompt = self._rewrite_prompt(prompt, input_path, output_path)
+        container_prompt = self._rewrite_prompt(prompt, input_path, output_path, task_type=task_type)
 
         missing_vars = self._missing_required_env_vars()
         if missing_vars:
@@ -555,21 +575,24 @@ class ContainerRunner(ToolRunner):
             t_err.join(timeout=2)
             elapsed = time.monotonic() - start
 
-            output_path.parent.mkdir(parents=True, exist_ok=True)
+            if is_dir_output:
+                output_path.mkdir(parents=True, exist_ok=True)
+            else:
+                output_path.parent.mkdir(parents=True, exist_ok=True)
             cp_out_proc = subprocess.run(
-                ["docker", "cp", f"{container_id}:{_CONTAINER_OUTPUT}", str(output_path)],
+                ["docker", "cp", f"{container_id}:{container_output_check}", str(host_output_check)],
                 capture_output=True,
                 text=True,
                 timeout=30,
             )
 
-            has_output = cp_out_proc.returncode == 0 and output_path.is_file()
+            has_output = cp_out_proc.returncode == 0 and host_output_check.is_file()
             success = start_proc.returncode == 0 and has_output
 
             out_text = ""
             if has_output:
                 try:
-                    out_text = output_path.read_text(encoding="utf-8")
+                    out_text = host_output_check.read_text(encoding="utf-8")
                 except (OSError, UnicodeDecodeError) as exc:
                     print(f"  Warning: could not read container output: {exc}", file=sys.stderr)
                     success = False
@@ -592,7 +615,7 @@ class ContainerRunner(ToolRunner):
                 elif not has_output:
                     cp_snippet = (cp_out_proc.stderr or cp_out_proc.stdout or "").strip()
                     cp_snippet = cp_snippet[:500] if cp_snippet else "no docker cp output"
-                    error = f"Container exited 0 but no output file was written ({cp_snippet})"
+                    error = f"Container exited 0 but no output file was written to {host_output_check} ({cp_snippet})"
                 elif has_output and not out_text:
                     error = "Output file exists but could not be read"
 
@@ -684,7 +707,14 @@ class ContainerRunner(ToolRunner):
 
         return env_vars
 
-    def _rewrite_prompt(self, prompt: str, input_path: Path | None, output_path: Path) -> str:
+    def _rewrite_prompt(
+        self,
+        prompt: str,
+        input_path: Path | None,
+        output_path: Path,
+        *,
+        task_type: str | None = None,
+    ) -> str:
         """Replace host-absolute paths in the prompt with container paths.
 
         For generation tasks the orchestrator passes ``input_path == output_path``
@@ -698,6 +728,9 @@ class ContainerRunner(ToolRunner):
         rewritten = prompt
         if input_path and input_path != output_path and str(input_path) in rewritten:
             rewritten = rewritten.replace(str(input_path), _CONTAINER_INPUT)
-        rewritten = rewritten.replace(str(output_path), _CONTAINER_OUTPUT)
+        if task_type in ("generate_test", "generate_chainsaw_test"):
+            rewritten = rewritten.replace(str(output_path), _CONTAINER_OUTPUT_DIR)
+        else:
+            rewritten = rewritten.replace(str(output_path), _CONTAINER_OUTPUT)
 
         return rewritten

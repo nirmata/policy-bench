@@ -269,6 +269,36 @@
 </div>
 {% endif %}
 
+{# ---- Chainsaw Test Generation leaderboard ---- #}
+{% if has_chainsaw is defined and has_chainsaw %}
+<div class="leaderboard" style="margin-top:1.5rem;">
+  <h2>Chainsaw Test Generation</h2>
+  <p style="font-size:0.8rem;color:var(--muted);margin:0.25rem 0 0.75rem;">Composite pass = schema valid <em>and</em> <code>chainsaw test</code> exits 0 <em>and</em> suite has both pass and fail scenarios. Coverage score = generated scenarios / oracle scenarios (capped at 1.0, not gated).</p>
+  <div class="table-scroll">
+  <table class="lb-table">
+    <tr>
+      <th>Tool</th>
+      <th>Composite Pass</th>
+      <th>Avg Coverage</th>
+      <th>Has Pass+Fail</th>
+      <th>Avg Time</th>
+      <th>Avg Cost</th>
+    </tr>
+    {% for e in leaderboard_chainsaw %}
+    <tr>
+      <td class="tool-name">{{ e.tool }}</td>
+      <td class="metric">{{ e.composite_pass }}<span class="metric-label"> / {{ e.total }}</span></td>
+      <td class="metric">{{ "%.0f" | format(e.avg_coverage * 100) }}%</td>
+      <td class="metric">{{ e.has_pass_and_fail }}<span class="metric-label"> / {{ e.total }}</span></td>
+      <td class="metric">{{ "%.1f" | format(e.avg_time) if e.avg_time else "-" }}{{ "s" if e.avg_time else "" }}</td>
+      <td class="metric">{{ "$%.4f" | format(e.avg_cost) if e.avg_cost else "-" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+</div>
+{% endif %}
+
 {# ---- Charts ---- #}
 <div class="charts">
   <div class="chart-card">
@@ -395,6 +425,13 @@ function renderRunDetail(run, parent) {
     if (r.testgen_has_pass_and_fail != null) metrics.push({ label: 'Pass+Fail Cases', value: r.testgen_has_pass_and_fail ? 'yes' : 'no' });
     if (r.testgen_generated_tuples != null) metrics.push({ label: 'Generated Tuples', value: r.testgen_generated_tuples });
     if (r.testgen_oracle_tuples) metrics.push({ label: 'Oracle Tuples', value: r.testgen_oracle_tuples });
+  }
+  if (r.task_type === 'generate_chainsaw_test') {
+    if (r.chainsaw_coverage_score != null) metrics.push({ label: 'Coverage', value: (r.chainsaw_coverage_score * 100).toFixed(0) + '%' });
+    if (r.chainsaw_has_pass_and_fail != null) metrics.push({ label: 'Pass+Fail Scenarios', value: r.chainsaw_has_pass_and_fail ? 'yes' : 'no' });
+    if (r.chainsaw_generated_scenarios != null) metrics.push({ label: 'Generated Scenarios', value: r.chainsaw_generated_scenarios });
+    const refScenarios = r.chainsaw_reference_scenarios ?? r.chainsaw_oracle_scenarios;
+    if (refScenarios) metrics.push({ label: 'Reference Scenarios', value: refScenarios });
   }
 
   document.getElementById('modalMetrics').innerHTML = metrics.map(m =>

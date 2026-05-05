@@ -363,6 +363,38 @@ def _compute_testgen_leaderboard(testgen_results: list[dict]) -> list[dict]:
     return board
 
 
+def _compute_chainsaw_leaderboard(chainsaw_results: list[dict]) -> list[dict]:
+    """Per-tool stats for generate_chainsaw_test runs."""
+    by_tool: dict[str, list[dict]] = defaultdict(list)
+    for r in chainsaw_results:
+        by_tool[r.get("tool", "unknown")].append(r)
+
+    board = []
+    for tool, items in sorted(by_tool.items()):
+        total = len(items)
+        composite_pass = sum(1 for i in items if i.get("chainsaw_composite_pass"))
+        coverage_scores = [
+            i["chainsaw_coverage_score"]
+            for i in items
+            if (i.get("chainsaw_reference_scenarios", i.get("chainsaw_oracle_scenarios", 0)) > 0)
+        ]
+        has_pf = sum(1 for i in items if i.get("chainsaw_has_pass_and_fail"))
+        times = [i["conversion_time_seconds"] for i in items if i.get("conversion_time_seconds")]
+        costs = [i["cost_usd"] for i in items if i.get("cost_usd") is not None]
+        board.append({
+            "tool": tool,
+            "total": total,
+            "composite_pass": composite_pass,
+            "composite_pass_rate": round(composite_pass / total, 4) if total else 0,
+            "avg_coverage": round(sum(coverage_scores) / len(coverage_scores), 4) if coverage_scores else 0,
+            "has_pass_and_fail": has_pf,
+            "avg_time": round(sum(times) / len(times), 2) if times else None,
+            "avg_cost": round(sum(costs) / len(costs), 6) if costs else None,
+        })
+    board.sort(key=lambda x: (-x["composite_pass_rate"], x["avg_time"] or float("inf")))
+    return board
+
+
 def _compute_leaderboard(tool_stats: dict, config: dict | None = None) -> list[dict]:
     """Rank tools by pass_rate. Speed, cost, diff reported as supplementary metrics."""
     board: list[dict] = []
@@ -434,6 +466,19 @@ def generate_markdown(agg: dict, leaderboard: list[dict]) -> str:
                 f"{e['avg_coverage']:>11.0%} | {e['has_pass_and_fail']:>5}/{e['total']:<7} | {t:>8} |"
             )
 
+    chainsaw = [r for r in agg["results"] if r.get("task_type") == "generate_chainsaw_test"]
+    if chainsaw:
+        cs_board = _compute_chainsaw_leaderboard(chainsaw)
+        lines.append("\n## Chainsaw Test Generation\n")
+        lines.append(f"| {'Tool':<10} | {'Composite Pass':>14} | {'Avg Coverage':>12} | {'Has Pass+Fail':>13} | {'Avg Time':>8} |")
+        lines.append(f"|{'-'*12}|{'-'*16}|{'-'*14}|{'-'*15}|{'-'*10}|")
+        for e in cs_board:
+            t = f"{e['avg_time']:.1f}s" if e["avg_time"] else "-"
+            lines.append(
+                f"| {e['tool']:<10} | {e['composite_pass']:>5}/{e['total']:<8} | "
+                f"{e['avg_coverage']:>11.0%} | {e['has_pass_and_fail']:>5}/{e['total']:<7} | {t:>8} |"
+            )
+
     lines.append("\n## Per-Difficulty Breakdown\n")
     for diff, stats in agg.get("difficulty_stats", {}).items():
         t = f"{stats['avg_time']:.1f}s" if stats["avg_time"] else "-"
@@ -469,14 +514,19 @@ def generate_html(
     ]
     generate_results = [r for r in results_all if r.get("task_type") == "generate"]
     testgen_results = [r for r in results_all if r.get("task_type") == "generate_test"]
+    chainsaw_results = [
+        r for r in results_all if r.get("task_type") == "generate_chainsaw_test"
+    ]
     convert_agg = _aggregate(convert_results)
     generate_agg = _aggregate(generate_results)
     leaderboard_convert = _compute_leaderboard(convert_agg["tool_stats"], config)
     leaderboard_generate = _compute_leaderboard(generate_agg["tool_stats"], config)
     leaderboard_testgen = _compute_testgen_leaderboard(testgen_results)
+    leaderboard_chainsaw = _compute_chainsaw_leaderboard(chainsaw_results)
     has_convert = bool(convert_results)
     has_generate = bool(generate_results)
     has_testgen = bool(testgen_results)
+    has_chainsaw = bool(chainsaw_results)
 
     if Environment and TEMPLATES_DIR.exists():
         env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)))
@@ -488,12 +538,15 @@ def generate_html(
                 leaderboard_convert=leaderboard_convert,
                 leaderboard_generate=leaderboard_generate,
                 leaderboard_testgen=leaderboard_testgen,
+                leaderboard_chainsaw=leaderboard_chainsaw,
                 convert_results=convert_results,
                 generate_results=generate_results,
                 testgen_results=testgen_results,
+                chainsaw_results=chainsaw_results,
                 has_convert=has_convert,
                 has_generate=has_generate,
                 has_testgen=has_testgen,
+                has_chainsaw=has_chainsaw,
             )
         except Exception as exc:
             print(

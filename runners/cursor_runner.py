@@ -37,7 +37,7 @@ from .base import (
 def _get_cursor_version() -> str | None:
     try:
         proc = subprocess.run(
-            ["cursor", "--version"], capture_output=True, text=True, timeout=10
+            ["cursor-agent", "--version"], capture_output=True, text=True, timeout=10
         )
         if proc.returncode == 0 and proc.stdout.strip():
             return proc.stdout.strip().splitlines()[0]
@@ -56,10 +56,10 @@ class CursorRunner(ToolRunner):
     name = "cursor"
 
     def is_available(self) -> bool:
-        return bool(shutil.which("cursor"))
+        return bool(shutil.which("cursor-agent"))
 
     # ------------------------------------------------------------------
-    # Primary: Cursor CLI agent mode  (cursor -p "..." --force)
+    # Primary: Cursor CLI agent mode  (cursor-agent -p "..." --force --trust)
     # ------------------------------------------------------------------
     def _run_via_cli(
         self,
@@ -75,9 +75,10 @@ class CursorRunner(ToolRunner):
         )
 
         cmd = [
-            "cursor",
+            "cursor-agent",
             "-p", full_prompt,
             "--force",
+            "--trust",
             "--output-format", "json",
         ]
 
@@ -185,7 +186,7 @@ class CursorRunner(ToolRunner):
     ) -> RunResult:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if shutil.which("cursor"):
+        if shutil.which("cursor-agent"):
             return self._run_via_cli(input_path, output_path, prompt, timeout_seconds)
 
         return self._run_manual(input_path, output_path, prompt, timeout_seconds)

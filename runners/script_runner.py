@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json as _json
 import os
+import select
 import subprocess
 import sys
 import time
@@ -57,10 +58,12 @@ class ScriptRunner(ToolRunner):
         config: dict | None = None,
     ) -> RunResult:
         repo_root = Path(__file__).resolve().parent.parent
+        config = config or {}
+        task_type = config.get("task_type")
 
         # dir_output_artifact returns a path if output_path is a pre-created
         # directory (generate_test tasks), None for single-file tasks.
-        output_check = dir_output_artifact(output_path)
+        output_check = dir_output_artifact(output_path, task_type=task_type)
         is_dir_output = output_check is not None
         if not is_dir_output:
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -69,30 +72,87 @@ class ScriptRunner(ToolRunner):
         cmd = [str(self._script), source_arg, str(output_path), prompt]
 
         # Signal dir-output mode to the shell script via environment variable.
-        env = {**os.environ, "BENCH_OUTPUT_KIND": "dir" if is_dir_output else "file"}
+        env = {
+            **os.environ,
+            "BENCH_OUTPUT_KIND": "dir" if is_dir_output else "file",
+            "BENCH_TASK_TYPE": str(task_type or "convert"),
+        }
+        stream_logs = bool(config.get("stream_logs", True))
+        if output_check is not None:
+            env["BENCH_OUTPUT_ARTIFACT"] = output_check.name
 
         start = time.monotonic()
+        if output_path.is_dir():
+            run_log_path = output_path / f"{self.name}-runner.log"
+        else:
+            run_log_path = output_path.with_suffix(f".{self.name}.runner.log")
+        run_log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        log_chunks: list[str] = []
+        returncode = -1
         try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout_seconds,
-                cwd=str(repo_root),
-                env=env,
-            )
-            elapsed = time.monotonic() - start
-        except subprocess.TimeoutExpired:
+            with run_log_path.open("w", encoding="utf-8") as logf:
+                proc = subprocess.Popen(
+                    cmd,
+                    cwd=str(repo_root),
+                    env=env,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                )
+                assert proc.stdout is not None
+
+                while True:
+                    elapsed = time.monotonic() - start
+                    if elapsed > timeout_seconds:
+                        proc.kill()
+                        tail = proc.stdout.read() or ""
+                        if tail:
+                            log_chunks.append(tail)
+                            logf.write(tail)
+                            logf.flush()
+                        return RunResult(
+                            output_path=output_path,
+                            conversion_time_seconds=elapsed,
+                            success=False,
+                            error=f"{self.name} script timed out after {timeout_seconds}s",
+                            raw_log=("".join(log_chunks)[:5000] if log_chunks else None),
+                            extra={"run_log_path": str(run_log_path)},
+                        )
+
+                    ready, _, _ = select.select([proc.stdout], [], [], 0.5)
+                    if ready:
+                        line = proc.stdout.readline()
+                        if line:
+                            log_chunks.append(line)
+                            logf.write(line)
+                            logf.flush()
+                            if stream_logs:
+                                print(line, end="")
+
+                    if proc.poll() is not None:
+                        tail = proc.stdout.read() or ""
+                        if tail:
+                            log_chunks.append(tail)
+                            logf.write(tail)
+                            logf.flush()
+                            if stream_logs:
+                                print(tail, end="")
+                        returncode = proc.returncode
+                        break
+        except Exception as exc:
             return RunResult(
                 output_path=output_path,
                 conversion_time_seconds=time.monotonic() - start,
                 success=False,
-                error=f"{self.name} script timed out after {timeout_seconds}s",
+                error=f"{self.name} script runner error: {exc}",
             )
 
-        log = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        elapsed = time.monotonic() - start
+        log = "".join(log_chunks)
         output_check = output_check or output_path
-        success = proc.returncode == 0 and output_check.exists()
+        success = returncode == 0 and output_check.exists()
 
         # Read optional sidecar metadata
         meta_path = Path(str(output_path) + ".meta.json")
@@ -134,7 +194,7 @@ class ScriptRunner(ToolRunner):
             output_path=output_path,
             conversion_time_seconds=round(elapsed, 3),
             success=success,
-            error=None if success else f"{self.name} script exited {proc.returncode}",
+            error=None if success else f"{self.name} script exited {returncode}",
             model=model or f"{self.name}-script",
             tool_version=tool_version,
             input_tokens=input_tokens,
@@ -142,4 +202,5 @@ class ScriptRunner(ToolRunner):
             cost_usd=cost,
             tokens_estimated=tokens_estimated,
             raw_log=log[:5000] if log.strip() else None,
+            extra={"run_log_path": str(run_log_path)},
         )

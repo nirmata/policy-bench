@@ -62,18 +62,25 @@ def extract_yaml_block(text: str) -> str | None:
     return None
 
 
-def dir_output_artifact(output_path: Path) -> Path | None:
+def dir_output_artifact(output_path: Path, task_type: str | None = None) -> Path | None:
     """Return the canonical artifact for directory-output tasks, or None.
 
-    For generate_test tasks, benchmark.py pre-creates ``output_path`` as a
-    directory containing ``policy.yaml``.  The AI should write
-    ``kyverno-test.yaml`` and ``resources.yaml`` there.  Checking
-    ``output_path.exists()`` is always True; callers need the specific file.
+    Directory-output tasks pre-create ``output_path`` as a directory and the AI
+    writes task-specific files there. Checking ``output_path.exists()`` is
+    always True; callers need a concrete artifact path to determine success.
 
-    Returns ``None`` for single-file (convert/generate) tasks so callers can
-    use the compact pattern: ``output_check = dir_output_artifact(p) or p``.
+    Known artifacts:
+      - generate_test: ``kyverno-test.yaml``
+      - generate_chainsaw_test: ``chainsaw-test.yaml``
+
+    Returns ``None`` for single-file tasks so callers can use:
+    ``output_check = dir_output_artifact(path, task_type) or path``.
     """
-    return (output_path / "kyverno-test.yaml") if output_path.is_dir() else None
+    if not output_path.is_dir():
+        return None
+    if task_type == "generate_chainsaw_test":
+        return output_path / "chainsaw-test.yaml"
+    return output_path / "kyverno-test.yaml"
 
 
 # -----------------------------------------------------------------------

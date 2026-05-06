@@ -41,6 +41,27 @@ def _has_pass_and_fail(results: list[dict]) -> bool:
     return "pass" in outcomes and "fail" in outcomes
 
 
+def _is_non_validate_policy(source_policy: Path) -> bool:
+    """Return True if every rule in the policy uses mutate or generate (not validate).
+
+    Mutate and generate policies produce only pass+skip results — there is no
+    fail case — so the has_pass_and_fail composite gate should not apply.
+    """
+    if yaml is None or not source_policy.exists():
+        return False
+    try:
+        doc = yaml.safe_load(source_policy.read_text(encoding="utf-8"))
+        if not isinstance(doc, dict):
+            return False
+        rules = (doc.get("spec") or {}).get("rules") or []
+        if not rules:
+            return False
+        return all("mutate" in r or "generate" in r for r in rules)
+    except Exception:
+        pass
+    return False
+
+
 def _load_policy_meta(source_policy: Path) -> tuple[str | None, str]:
     """Return (metadata.name, kind) from a policy YAML, or (None, '') on failure."""
     if yaml is None or not source_policy.exists():
@@ -116,12 +137,38 @@ def evaluate_testgen(
         errors.append(f"Failed to parse kyverno-test.yaml: {exc}")
         schema_pass = False
 
+    resource_names: set[str] = set()
     try:
-        # resources.yaml typically contains multiple documents separated by ---
-        list(yaml.safe_load_all(resources_path.read_text(encoding="utf-8")))
+        docs = list(yaml.safe_load_all(resources_path.read_text(encoding="utf-8")))
+        for doc in docs:
+            if isinstance(doc, dict):
+                meta = doc.get("metadata") or {}
+                name = meta.get("name", "")
+                ns = meta.get("namespace", "")
+                if name:
+                    resource_names.add(name)
+                    if ns:
+                        resource_names.add(f"{ns}/{name}")
     except Exception as exc:
         errors.append(f"Failed to parse resources.yaml: {exc}")
         schema_pass = False
+
+    if not schema_pass:
+        return _failure_result(errors)
+
+    # --- 1b. Name consistency: every name in results must exist in resources.yaml ---
+    if parsed_manifest and resource_names:
+        referenced: list[str] = []
+        for entry in (parsed_manifest.get("results") or []):
+            referenced.extend(entry.get("resources") or [])
+        missing_names = [r for r in referenced if r not in resource_names]
+        if missing_names:
+            errors.append(
+                f"Resource name mismatch: {missing_names} referenced in kyverno-test.yaml "
+                f"but not found in resources.yaml. "
+                f"Available resource names: {sorted(resource_names)}"
+            )
+            schema_pass = False
 
     if not schema_pass:
         return _failure_result(errors)
@@ -159,7 +206,10 @@ def evaluate_testgen(
     # Composite requires structural validity, a runnable suite, and scenario diversity.
     # Coverage score is reported but not gated — the oracle represents one author's
     # choices, not a minimum bar.
-    composite = schema_pass and (kt_passed if not kt_skipped else False) and has_p_and_f
+    # GeneratingPolicy tests correctly produce only result: pass entries (no fail),
+    # so the has_pass_and_fail gate is relaxed for them.
+    non_validate = _is_non_validate_policy(source_policy)
+    composite = schema_pass and (kt_passed if not kt_skipped else False) and (has_p_and_f or non_validate)
 
     return {
         "testgen_schema_pass": schema_pass,

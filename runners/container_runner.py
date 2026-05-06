@@ -92,6 +92,15 @@ _REQUIRED_ENV_BY_TOOL = {
     "codex": ["CODEX_API_KEY"],
 }
 
+# Host files to copy into containers after creation, keyed by tool name.
+# Format: {host_path: container_path} — copied via docker cp (not mounted),
+# so the container can write alongside them (e.g. nctl sessions next to config).
+_COPY_INTO_CONTAINER: dict[str, dict[str, str]] = {
+    "nctl": {
+        str(Path.home() / ".nirmata" / "config"): "/home/benchmark/.nirmata/config",
+    },
+}
+
 # Upstream-network failures we retry automatically in persistent mode.
 # These are all Go-net / HTTP-client error texts; we match substrings so they
 # hit even when wrapped in outer error messages (e.g. nctl's
@@ -189,6 +198,7 @@ class ContainerRunner(ToolRunner):
                 f"Failed to start persistent container: {(start_proc.stderr or '').strip()}"
             )
 
+        self._copy_files_into_container(self._container_id)
         print(f"  [{self.name}] Persistent container started: {self._container_id[:12]}", file=sys.stderr)
 
     def teardown(self) -> None:
@@ -394,15 +404,21 @@ class ContainerRunner(ToolRunner):
                 model=f"{self.name}-container",
             )
 
-        # Extract output
+        # Extract output — for dir-output tasks copy the whole directory so
+        # all generated files (kyverno-test.yaml, resources.yaml, etc.) land
+        # on the host, not just the canonical artifact.
         if is_dir_output:
             output_path.mkdir(parents=True, exist_ok=True)
+            cp_out = subprocess.run(
+                ["docker", "cp", f"{cid}:{_CONTAINER_OUTPUT_DIR}/.", str(output_path)],
+                capture_output=True, text=True, timeout=30,
+            )
         else:
             output_path.parent.mkdir(parents=True, exist_ok=True)
-        cp_out = subprocess.run(
-            ["docker", "cp", f"{cid}:{container_output_check}", str(host_output_check)],
-            capture_output=True, text=True, timeout=30,
-        )
+            cp_out = subprocess.run(
+                ["docker", "cp", f"{cid}:{container_output_check}", str(host_output_check)],
+                capture_output=True, text=True, timeout=30,
+            )
 
         has_output = cp_out.returncode == 0 and host_output_check.is_file()
         success = exec_proc.returncode == 0 and has_output
@@ -518,6 +534,8 @@ class ContainerRunner(ToolRunner):
                     model=f"{self.name}-container",
                 )
 
+            self._copy_files_into_container(container_id)
+
             if not is_generate:
                 cp_proc = subprocess.run(
                     ["docker", "cp", str(input_path), f"{container_id}:{_CONTAINER_INPUT}"],
@@ -577,14 +595,18 @@ class ContainerRunner(ToolRunner):
 
             if is_dir_output:
                 output_path.mkdir(parents=True, exist_ok=True)
+                cp_out_proc = subprocess.run(
+                    ["docker", "cp", f"{container_id}:{_CONTAINER_OUTPUT_DIR}/.", str(output_path)],
+                    capture_output=True, text=True, timeout=30,
+                )
             else:
                 output_path.parent.mkdir(parents=True, exist_ok=True)
-            cp_out_proc = subprocess.run(
-                ["docker", "cp", f"{container_id}:{container_output_check}", str(host_output_check)],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
+                cp_out_proc = subprocess.run(
+                    ["docker", "cp", f"{container_id}:{container_output_check}", str(host_output_check)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
 
             has_output = cp_out_proc.returncode == 0 and host_output_check.is_file()
             success = start_proc.returncode == 0 and has_output
@@ -661,6 +683,45 @@ class ContainerRunner(ToolRunner):
     # ------------------------------------------------------------------
     # Shared helpers
     # ------------------------------------------------------------------
+
+    def _copy_files_into_container(self, container_id: str) -> None:
+        """Write tool-specific host files into a container as the benchmark user.
+
+        For running containers (persistent mode): uses `docker exec -i cat >`
+        so the file is owned by the benchmark user — avoids the root ownership
+        that `docker cp` produces, which blocks non-root reads of 600 files.
+
+        For created-but-not-running containers (ephemeral mode): falls back to
+        `docker cp` which may leave files root-owned; the tool should still
+        function via env-var credentials in that case.
+
+        Silently skips files that don't exist on the host.
+        """
+        for host_path, container_path in _COPY_INTO_CONTAINER.get(self.name, {}).items():
+            if not Path(host_path).exists():
+                continue
+            container_dir = container_path.rsplit("/", 1)[0]
+            content = Path(host_path).read_bytes()
+
+            # Try exec-based write (requires container to be running)
+            mkdir_proc = subprocess.run(
+                ["docker", "exec", container_id, "mkdir", "-p", container_dir],
+                capture_output=True, timeout=10,
+            )
+            if mkdir_proc.returncode == 0:
+                subprocess.run(
+                    ["docker", "exec", "-i", container_id, "sh", "-c",
+                     f"cat > {container_path}"],
+                    input=content,
+                    capture_output=True, timeout=10,
+                )
+            else:
+                # Fallback: docker cp (ephemeral containers, not yet started).
+                # File will be root-owned; tool falls back to env-var credentials.
+                subprocess.run(
+                    ["docker", "cp", host_path, f"{container_id}:{container_path}"],
+                    capture_output=True, timeout=10,
+                )
 
     def _missing_required_env_vars(self) -> list[str]:
         required = _REQUIRED_ENV_BY_TOOL.get(self.name, [])

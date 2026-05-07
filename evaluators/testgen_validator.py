@@ -62,6 +62,22 @@ def _is_non_validate_policy(source_policy: Path) -> bool:
     return False
 
 
+def _extract_not_found_resources(kt_errors: list[str]) -> set[str]:
+    """Parse kyverno test output and return resource names that got 'Not found'."""
+    import re
+    not_found: set[str] = set()
+    for err in kt_errors:
+        for line in err.splitlines():
+            if "Not found" in line:
+                # Lines look like: │ ... │ apps/v1/Deployment/default/my-resource │ Fail │ Not found │
+                parts = [p.strip() for p in line.split("│") if p.strip()]
+                if len(parts) >= 4:
+                    resource_path = parts[3] if len(parts) >= 5 else parts[2]
+                    name = resource_path.rsplit("/", 1)[-1]
+                    not_found.add(name)
+    return not_found
+
+
 def _load_policy_meta(source_policy: Path) -> tuple[str | None, str]:
     """Return (metadata.name, kind) from a policy YAML, or (None, '') on failure."""
     if yaml is None or not source_policy.exists():
@@ -183,14 +199,39 @@ def evaluate_testgen(
         timeout_sec=timeout_sec,
     )
 
-    # For generate/mutate policies, "Not found" is expected for non-matching
-    # resources — the Kyverno CLI emits no result for them. Only count real
-    # mismatches ("Want X got Y") as failures.
+    # For generate/mutate policies, the Kyverno CLI emits no result for
+    # non-matching resources ("Not found"). Rather than ignoring failures,
+    # strip those entries from the manifest and re-run — so real mismatches
+    # on matching resources are still caught.
     if not kt_passed and not kt_skipped and _is_non_validate_policy(source_policy):
-        real_failures = [e for e in kt_errors if "Not found" not in e or "Want" in e]
-        if not real_failures:
-            kt_passed = True
-            kt_errors = []
+        not_found = _extract_not_found_resources(kt_errors)
+        if not_found and parsed_manifest:
+            import shutil as _shutil
+            import tempfile as _tempfile
+            cleaned_manifest = dict(parsed_manifest)
+            cleaned_manifest["results"] = [
+                r for r in (cleaned_manifest.get("results") or [])
+                if not any(res in not_found for res in (r.get("resources") or []))
+            ]
+            if cleaned_manifest["results"]:
+                cleaned_dir = Path(_tempfile.mkdtemp(prefix="kyverno_testgen_clean_"))
+                try:
+                    for f in generated_dir.iterdir():
+                        if f.is_file():
+                            _shutil.copy(f, cleaned_dir / f.name)
+                    (cleaned_dir / "kyverno-test.yaml").write_text(
+                        yaml.dump(cleaned_manifest, default_flow_style=False, sort_keys=False),
+                        encoding="utf-8",
+                    )
+                    kt_passed, kt_errors, kt_skipped = run_kyverno_test(
+                        cleaned_dir,
+                        output_policy_name=policy_name,
+                        output_policy_kind=policy_kind,
+                        policy_under_test=source_policy,
+                        timeout_sec=timeout_sec,
+                    )
+                finally:
+                    _shutil.rmtree(cleaned_dir, ignore_errors=True)
 
     # --- 3. Coverage ---
     generated_results: list[dict] = (parsed_manifest or {}).get("results") or []

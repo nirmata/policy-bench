@@ -86,8 +86,8 @@ _DOCS_CLAUSE = (
 
 _TESTGEN_DOCS_CLAUSE = (
     f"\n\nLook up Kyverno {KYVERNO_VERSION} documentation and examples before writing the test:"
-    "\n- https://kyverno.io/docs/writing-policies/testing/"
-    "\n- https://github.com/kyverno/kyverno-policies"
+    "\n- https://kyverno.io/docs"
+    "\n- https://github.com/nirmata/kyverno-policies"
 )
 
 _CHAINSAW_DOCS_CLAUSE = (
@@ -102,10 +102,16 @@ _CHAINSAW_DOCS_CLAUSE = (
 
 _TESTGEN_PROMPT = (
     "Write a Kyverno CLI test suite for the Kyverno policy in {input_path}. "
-    "Create two files in {output_path}:\n"
-    "1. `kyverno-test.yaml` — apiVersion: cli.kyverno.io/v1alpha1, kind: Test, "
+    "You MUST write exactly two files directly into {output_path} — no subdirectories:\n"
+    "1. `{output_path}/kyverno-test.yaml` — apiVersion: cli.kyverno.io/v1alpha1, kind: Test, "
     "with `policies: [policy.yaml]` (the policy is already copied there as policy.yaml).\n"
-    "2. `resources.yaml` — all Kubernetes resource manifests referenced by the test cases.\n\n"
+    "2. `{output_path}/resources.yaml` — all Kubernetes resource manifests referenced by the test cases.\n\n"
+    "IMPORTANT: Both files must exist at exactly those paths when you are done. "
+    "Do NOT create a kyverno-tests/ subdirectory or any other subdirectory.\n\n"
+    "CRITICAL: Write resources.yaml FIRST. Then in kyverno-test.yaml, use the EXACT "
+    "same metadata.name values from resources.yaml in the results[].resources lists. "
+    "Any name in results that does not match a resource name in resources.yaml will "
+    "cause test failures.\n\n"
     "Requirements:\n"
     "- Cover both passing cases (resources the policy allows) "
     "and failing cases (resources the policy denies or flags).\n"

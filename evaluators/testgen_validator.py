@@ -183,6 +183,15 @@ def evaluate_testgen(
         timeout_sec=timeout_sec,
     )
 
+    # For generate/mutate policies, "Not found" is expected for non-matching
+    # resources — the Kyverno CLI emits no result for them. Only count real
+    # mismatches ("Want X got Y") as failures.
+    if not kt_passed and not kt_skipped and _is_non_validate_policy(source_policy):
+        real_failures = [e for e in kt_errors if "Not found" not in e or "Want" in e]
+        if not real_failures:
+            kt_passed = True
+            kt_errors = []
+
     # --- 3. Coverage ---
     generated_results: list[dict] = (parsed_manifest or {}).get("results") or []
     generated_tuples = _count_tuples(generated_results)

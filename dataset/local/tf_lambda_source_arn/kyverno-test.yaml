@@ -1,0 +1,19 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: check-source-arn-account
+policies:
+  - policy.yaml
+resources:
+  - resource.yaml
+results:
+  - policy: check-source-arn-account
+    kind: Plan
+    resources:
+      - good-plan
+    result: pass
+  - policy: check-source-arn-account
+    kind: Plan
+    resources:
+      - bad-plan
+    result: fail

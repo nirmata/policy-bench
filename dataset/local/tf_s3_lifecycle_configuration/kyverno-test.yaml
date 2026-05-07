@@ -1,0 +1,19 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: s3-lifecycle-configuration
+policies:
+  - policy.yaml
+resources:
+  - resource.yaml
+results:
+  - policy: s3-lifecycle-configuration
+    kind: Plan
+    resources:
+      - good-plan
+    result: pass
+  - policy: s3-lifecycle-configuration
+    kind: Plan
+    resources:
+      - bad-plan
+    result: fail

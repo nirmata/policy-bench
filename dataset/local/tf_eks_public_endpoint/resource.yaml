@@ -1,0 +1,25 @@
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: good-plan
+terraform_version: "1.8.4"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_eks_cluster
+        values:
+          vpc_config:
+            - endpoint_public_access: false
+---
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: bad-plan
+terraform_version: "1.8.4"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_eks_cluster
+        values:
+          vpc_config:
+            - endpoint_public_access: true

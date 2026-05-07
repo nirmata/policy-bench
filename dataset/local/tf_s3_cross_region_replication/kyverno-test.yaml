@@ -1,0 +1,19 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: enable-s3-cross-region-replication
+policies:
+  - policy.yaml
+resources:
+  - resource.yaml
+results:
+  - policy: enable-s3-cross-region-replication
+    kind: Plan
+    resources:
+      - good-plan
+    result: pass
+  - policy: enable-s3-cross-region-replication
+    kind: Plan
+    resources:
+      - bad-plan
+    result: fail

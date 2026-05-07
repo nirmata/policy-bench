@@ -1,0 +1,37 @@
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: good-plan
+terraform_version: "1.8.4"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_lambda_function
+        name: my_lambda
+        values:
+          function_name: my-lambda-function
+          runtime: python3.12
+          handler: index.handler
+          role: arn:aws:iam::123456789012:role/lambda-role
+          vpc_config:
+            - subnet_ids:
+                - subnet-abc123
+              security_group_ids:
+                - sg-abc123
+---
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: bad-plan
+terraform_version: "1.8.4"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_lambda_function
+        name: my_lambda
+        values:
+          function_name: my-lambda-function
+          runtime: python3.12
+          handler: index.handler
+          role: arn:aws:iam::123456789012:role/lambda-role
+          vpc_config: []

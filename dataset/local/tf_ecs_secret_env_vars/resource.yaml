@@ -1,0 +1,23 @@
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: good-plan
+terraform_version: "1.8.4"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_ecs_task_definition
+        values:
+          container_definitions: "[{\"name\":\"app\",\"environment\":[{\"name\":\"MY_APP_KEY\",\"value\":\"secret\"}]}]"
+---
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: bad-plan
+terraform_version: "1.8.4"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_ecs_task_definition
+        values:
+          container_definitions: "[{\"name\":\"app\",\"environment\":[{\"name\":\"AWS_ACCESS_KEY_ID\",\"value\":\"AKIAIOSFODNN7EXAMPLE\"}]}]"

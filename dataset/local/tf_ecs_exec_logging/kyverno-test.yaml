@@ -1,0 +1,19 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: check-ecs-exec-logging
+policies:
+  - policy.yaml
+resources:
+  - resource.yaml
+results:
+  - policy: check-ecs-exec-logging
+    kind: Plan
+    resources:
+      - good-plan
+    result: pass
+  - policy: check-ecs-exec-logging
+    kind: Plan
+    resources:
+      - bad-plan
+    result: fail

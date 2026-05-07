@@ -1,0 +1,27 @@
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: good-plan
+terraform_version: "1.8.4"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_instance
+        values:
+          metadata_options:
+            - http_tokens: "required"
+              http_endpoint: "enabled"
+---
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: bad-plan
+terraform_version: "1.8.4"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_instance
+        values:
+          metadata_options:
+            - http_tokens: "optional"
+              http_endpoint: "enabled"

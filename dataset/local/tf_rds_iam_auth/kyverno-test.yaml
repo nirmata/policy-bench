@@ -1,0 +1,19 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: rds-instance-iam-authentication-enabled
+policies:
+  - policy.yaml
+resources:
+  - resource.yaml
+results:
+  - policy: rds-instance-iam-authentication-enabled
+    kind: Plan
+    resources:
+      - good-plan
+    result: pass
+  - policy: rds-instance-iam-authentication-enabled
+    kind: Plan
+    resources:
+      - bad-plan
+    result: fail

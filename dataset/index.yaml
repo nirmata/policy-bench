@@ -424,3 +424,487 @@ policies:
   path: local/chainsaw-source-policy.yaml
   chainsaw_reference_dir: local/chainsaw/ch_kyverno_helm_install
   description: generate one Chainsaw test set with exactly two scenarios for Kyverno Helm install; scenario A must pass with policy smoke test and scenario B must fail with invalid image/resource pressure as expected
+# Dockerfile track
+- id: df_check_apt_force_yes
+  track: dockerfile
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_check_apt_force_yes
+  description: The --force-yes option in apt-get is used to override some safety checks and prompts, allowing the installation
+    or upgrade of packages even if they require additional user confirmation or if they conflict with other packages. This can
+    potentially lead to system instability or unexpected behavior.
+- id: df_check_authentication
+  track: dockerfile
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_check_authentication
+  description: ensures that Dockerfiles do not contain the '--allow-unauthenticated' flag.
+- id: df_check_cert_curl
+  track: dockerfile
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_check_cert_curl
+  description: checks whether certificate validation is disabled in the Dockerfile using --insecure option when running the
+    curl command.
+- id: df_check_cert_git_env
+  track: dockerfile
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_check_cert_git_env
+  description: checks whether GIT_SSL_NO_VERIFY environment variable is set to true or 1 in the Dockerfile, which disables
+    SSL certificate validation for Git operations.
+- id: df_check_cert_nodejs_env
+  track: dockerfile
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_check_cert_nodejs_env
+  description: checks whether NODE_TLS_REJECT_UNAUTHORIZED environment variable is set to 0 in the Dockerfile, which disables
+    TLS certificate verification in Node.js.
+- id: df_check_cert_pip3
+  track: dockerfile
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_check_cert_pip3
+  description: checks whether certificate validation is disabled in the Dockerfile using --trusted-host option when running
+    the pip3 command.
+- id: df_check_cert_python_env
+  track: dockerfile
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_check_cert_python_env
+  description: checks whether PYTHONHTTPSVERIFY environment variable is set to 0 in the Dockerfile, which disables HTTPS
+    certificate verification in Python.
+- id: df_check_cert_wget
+  track: dockerfile
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_check_cert_wget
+  description: checks whether certificate validation is disabled in the Dockerfile using --no-check-certificate option when
+    running the wget command.
+- id: df_check_label_maintainer
+  track: dockerfile
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_check_label_maintainer
+  description: checks if the LABEL instruction has been specified with a maintainer name in the Dockerfile, since the MAINTAINER
+    instruction is deprecated.
+- id: df_check_last_user
+  track: dockerfile
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_check_last_user
+  description: validates that the last USER instruction in the Dockerfile is not root.
+- id: df_check_missing_sig_options
+  track: dockerfile
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_check_missing_sig_options
+  description: ensures that packages with untrusted or missing signatures are not used by rpm via the --nodigest, --nosignature,
+    --noverify, or --nofiledigest options.
+- id: df_check_nogpgcheck
+  track: dockerfile
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_check_nogpgcheck
+  description: checks whether nogpgcheck is enabled in dnf, tdnf, or yum commands in the Dockerfile, which disables GPG
+    signature checking.
+- id: df_check_npm_strict_ssl
+  track: dockerfile
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_check_npm_strict_ssl
+  description: ensures that certificate validation is not disabled for npm via the NPM_CONFIG_STRICT_SSL environment variable.
+- id: df_check_untrust_flag
+  track: dockerfile
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_check_untrust_flag
+  description: ensures that Dockerfiles do not contain the '--allow-untrusted' flag.
+- id: df_detect_multiple_instructions
+  track: dockerfile
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_detect_multiple_instructions
+  description: ensures that Dockerfile container images are built with minimal cached layers by detecting multiple instructions
+    that could be combined.
+- id: df_disallow_sudo
+  track: dockerfile
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_disallow_sudo
+  description: disallows the use of sudo within a Dockerfile to avoid privilege escalation.
+- id: df_prefer_copy_over_add
+  track: dockerfile
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_prefer_copy_over_add
+  description: ensures that COPY instructions are used instead of ADD instructions in Dockerfiles.
+- id: df_validate_base_image_tag
+  track: dockerfile
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_validate_base_image_tag
+  description: checks whether the base image tag is defined with a specific version or digest in the Dockerfile.
+- id: df_validate_expose_port_22
+  track: dockerfile
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_validate_expose_port_22
+  description: checks whether Dockerfiles expose port 22, which is the SSH port and a potential security risk.
+- id: df_validate_healthcheck
+  track: dockerfile
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_validate_healthcheck
+  description: checks if the HEALTHCHECK instruction is defined in the Dockerfile.
+- id: df_validate_user_instruction
+  track: dockerfile
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/df_validate_user_instruction
+  description: checks if the Dockerfile contains a USER instruction; fails if not present.
+# Terraform track
+- id: tf_ec2_auto_scaling_groups
+  track: terraform
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_ec2_auto_scaling_groups
+  description: ensures EC2 Auto Scaling groups use launch templates instead of launch configurations for standardization,
+    security, and cost optimization.
+- id: tf_ec2_detailed_monitoring
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_ec2_detailed_monitoring
+  description: ensures that detailed monitoring is enabled for AWS EC2 instances.
+- id: tf_ec2_iam_role
+  track: terraform
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_ec2_iam_role
+  description: ensures that an IAM role is attached to an EC2 instance.
+- id: tf_ec2_imds_v1
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_ec2_imds_v1
+  description: ensures IMDSv1 is disabled for EC2 instances in favor of the more secure IMDSv2.
+- id: tf_ec2_public_ip
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_ec2_public_ip
+  description: ensures that EC2 instances are not assigned a public IP address.
+- id: tf_ec2_transit_gateway_vpc
+  track: terraform
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_ec2_transit_gateway_vpc
+  description: ensures Transit Gateways do not automatically accept VPC attachment requests to maintain control over network
+    access.
+- id: tf_ecs_awsvpc_network_mode
+  track: terraform
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_ecs_awsvpc_network_mode
+  description: ensures ECS task definitions use awsvpc network mode to provide task-level network isolation.
+- id: tf_ecs_container_insights
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_ecs_container_insights
+  description: ensures that ECS clusters have container insights enabled for monitoring and observability.
+- id: tf_ecs_efs_encryption
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_ecs_efs_encryption
+  description: validates whether transit_encryption is set to ENABLED in ECS task definition EFS volumes.
+- id: tf_ecs_exec_logging
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_ecs_exec_logging
+  description: validates that logging is enabled for commands executed via ECS Exec in the ECS cluster; fails if logging is
+    set to None.
+- id: tf_ecs_latest_fargate
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_ecs_latest_fargate
+  description: ensures AWS ECS services are running on the latest Fargate platform version.
+- id: tf_ecs_secret_env_vars
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_ecs_secret_env_vars
+  description: checks if any ECS task definition environment variables contain sensitive keys such as AWS_ACCESS_KEY_ID,
+    AWS_SECRET_ACCESS_KEY, or ECS_ENGINE_AUTH_DATA in plaintext.
+- id: tf_eks_control_plane_logging
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_eks_control_plane_logging
+  description: ensures Amazon EKS control plane logging is enabled for all log types for security and compliance.
+- id: tf_eks_k8s_version
+  track: terraform
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_eks_k8s_version
+  description: checks that EKS clusters are running a supported Kubernetes version.
+- id: tf_eks_nodegroup_remote_access
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_eks_nodegroup_remote_access
+  description: ensures that EKS node groups with ec2_ssh_key set also specify source_security_group_ids to restrict SSH access
+    from the internet.
+- id: tf_eks_public_endpoint
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_eks_public_endpoint
+  description: ensures the EKS cluster public endpoint is disabled to minimize the attack surface of the control plane.
+- id: tf_lambda_code_signing
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_lambda_code_signing
+  description: ensures that AWS Lambda functions are configured to validate code-signing.
+- id: tf_lambda_dead_letter_queue
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_lambda_dead_letter_queue
+  description: ensures that AWS Lambda functions are configured with a Dead Letter Queue (DLQ).
+- id: tf_lambda_env_var_encryption
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_lambda_env_var_encryption
+  description: ensures that if environment variables are used in a Lambda function, they are encrypted.
+- id: tf_lambda_function_concurrency
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_lambda_function_concurrency
+  description: checks whether a concurrency level is configured for the Lambda function.
+- id: tf_lambda_public_access
+  track: terraform
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_lambda_public_access
+  description: ensures that AWS Lambda functions are not publicly accessible.
+- id: tf_lambda_runtime
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_lambda_runtime
+  description: ensures that Lambda functions do not use deprecated runtimes.
+- id: tf_lambda_source_arn
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_lambda_source_arn
+  description: ensures that AWS Lambda function permissions delegated to AWS services are limited by SourceArn or SourceAccount.
+- id: tf_lambda_url_auth
+  track: terraform
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_lambda_url_auth
+  description: ensures that Lambda function URL AuthType is not set to NONE.
+- id: tf_lambda_vpc
+  track: terraform
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_lambda_vpc
+  description: validates whether vpc_config is specified for Lambda functions to provide isolation and enhanced security.
+- id: tf_lambda_xray_tracing
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_lambda_xray_tracing
+  description: checks whether AWS X-Ray tracing is enabled for the Lambda function.
+- id: tf_rds_aurora_audit_logging
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_rds_aurora_audit_logging
+  description: checks whether an Amazon Aurora MySQL DB cluster is configured to publish audit logs to Amazon CloudWatch Logs.
+- id: tf_rds_auto_minor_upgrade
+  track: terraform
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_rds_auto_minor_upgrade
+  description: checks whether automatic minor version upgrades are enabled for RDS database instances.
+- id: tf_rds_copy_tags_to_snapshots
+  track: terraform
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_rds_copy_tags_to_snapshots
+  description: checks whether RDS DB instances are configured to copy all tags to snapshots when snapshots are created.
+- id: tf_rds_deletion_protection
+  track: terraform
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_rds_deletion_protection
+  description: ensures deletion protection is enabled for RDS clusters to prevent accidental data loss.
+- id: tf_rds_iam_auth
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_rds_iam_auth
+  description: checks whether an RDS DB instance has IAM database authentication enabled for mysql, postgres, aurora, aurora-mysql,
+    aurora-postgresql, and mariadb engine types.
+- id: tf_rds_instance_public_access
+  track: terraform
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_rds_instance_public_access
+  description: ensures RDS instances are not publicly accessible to prevent unnecessary traffic to the database.
+- id: tf_rds_multi_az
+  track: terraform
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_rds_multi_az
+  description: checks whether high availability is enabled for RDS DB instances via multi-AZ deployment.
+- id: tf_rds_proxy_tls
+  track: terraform
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_rds_proxy_tls
+  description: checks if RDS Proxy is configured to use TLS to add an additional layer of security between client applications
+    and the underlying database.
+- id: tf_rds_storage_encrypted
+  track: terraform
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_rds_storage_encrypted
+  description: checks whether storage encryption is enabled for Amazon RDS DB instances.
+- id: tf_s3_abort_incomplete_uploads
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_s3_abort_incomplete_uploads
+  description: ensures S3 buckets have a lifecycle rule configured to abort incomplete multipart uploads.
+- id: tf_s3_cloudtrail_logging
+  track: terraform
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_s3_cloudtrail_logging
+  description: ensures AWS CloudTrail is enabled and storing logs in an S3 bucket for security and audit purposes.
+- id: tf_s3_cross_region_replication
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_s3_cross_region_replication
+  description: ensures S3 buckets have cross-region replication enabled for data durability and availability.
+- id: tf_s3_disable_acl
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_s3_disable_acl
+  description: ensures S3 Object Ownership is set to disable ACLs so the bucket owner manages access exclusively via policies.
+- id: tf_s3_kms_encryption
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_s3_kms_encryption
+  description: ensures S3 buckets use KMS encryption rather than the default SSE-S3 encryption.
+- id: tf_s3_lifecycle_configuration
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_s3_lifecycle_configuration
+  description: ensures S3 buckets have a lifecycle_configuration set for cost-effective object storage management.
+- id: tf_s3_no_wildcard_principal
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_s3_no_wildcard_principal
+  description: validates that the Principal in S3 bucket IAM policies is not set to '*', which would allow any principal
+    access to the resource.
+- id: tf_s3_public_access_block
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_s3_public_access_block
+  description: ensures S3 Block Public Access settings are enabled to prevent public exposure of bucket contents.
+- id: tf_s3_server_access_logging
+  track: terraform
+  task_type: generate
+  difficulty: medium
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_s3_server_access_logging
+  description: ensures S3 server access logging is enabled to capture detailed records of requests made to the bucket.
+- id: tf_s3_versioning
+  track: terraform
+  task_type: generate
+  difficulty: hard
+  expected_output_kind: ValidatingPolicy
+  kyverno_test_dir: local/tf_s3_versioning
+  description: ensures S3 versioning is enabled to preserve, retrieve, and restore every version of every object in the bucket.

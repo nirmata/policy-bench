@@ -1,0 +1,19 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: check-last-user
+policies:
+  - policy.yaml
+resources:
+  - resource.yaml
+results:
+  - policy: check-last-user
+    kind: Dockerfile
+    resources:
+      - good-dockerfile
+    result: pass
+  - policy: check-last-user
+    kind: Dockerfile
+    resources:
+      - bad-dockerfile
+    result: fail

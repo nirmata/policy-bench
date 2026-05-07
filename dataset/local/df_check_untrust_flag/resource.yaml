@@ -1,0 +1,23 @@
+apiVersion: dockerfile.kyverno.io/v1
+kind: Dockerfile
+metadata:
+  name: good-dockerfile
+Stages:
+  - BaseName: alpine:3.18
+    Commands:
+      - Name: RUN
+        CmdLine:
+          - "apk add --no-cache curl"
+        PrependShell: true
+---
+apiVersion: dockerfile.kyverno.io/v1
+kind: Dockerfile
+metadata:
+  name: bad-dockerfile
+Stages:
+  - BaseName: alpine:3.18
+    Commands:
+      - Name: RUN
+        CmdLine:
+          - "apk add --allow-untrusted curl"
+        PrependShell: true

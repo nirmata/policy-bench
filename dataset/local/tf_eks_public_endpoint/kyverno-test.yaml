@@ -1,0 +1,19 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: check-public-endpoint
+policies:
+  - policy.yaml
+resources:
+  - resource.yaml
+results:
+  - policy: check-public-endpoint
+    kind: Plan
+    resources:
+      - good-plan
+    result: pass
+  - policy: check-public-endpoint
+    kind: Plan
+    resources:
+      - bad-plan
+    result: fail

@@ -1,0 +1,23 @@
+apiVersion: dockerfile.kyverno.io/v1
+kind: Dockerfile
+metadata:
+  name: good-dockerfile
+Stages:
+  - BaseName: ubuntu:22.04
+    Commands:
+      - Name: RUN
+        CmdLine:
+          - "wget https://example.com/file.tar.gz"
+        PrependShell: true
+---
+apiVersion: dockerfile.kyverno.io/v1
+kind: Dockerfile
+metadata:
+  name: bad-dockerfile
+Stages:
+  - BaseName: ubuntu:22.04
+    Commands:
+      - Name: RUN
+        CmdLine:
+          - "wget --no-check-certificate https://example.com/file.tar.gz"
+        PrependShell: true

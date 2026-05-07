@@ -56,6 +56,18 @@ tracks:
       - DeletingPolicy
     default_output_kind: DeletingPolicy
     description: "Kyverno CleanupPolicy to DeletingPolicy (1.16+)"
+  dockerfile:
+    input_kind: Dockerfile
+    output_kinds:
+      - ValidatingPolicy
+    default_output_kind: ValidatingPolicy
+    description: "Dockerfile parsed JSON to Kyverno ValidatingPolicy (v1alpha1, JSON eval mode)"
+  terraform:
+    input_kind: TerraformPlan
+    output_kinds:
+      - ValidatingPolicy
+    default_output_kind: ValidatingPolicy
+    description: "Terraform plan JSON to Kyverno ValidatingPolicy (v1alpha1, JSON eval mode)"
 
 # Task types supported by the benchmark
 task_types:

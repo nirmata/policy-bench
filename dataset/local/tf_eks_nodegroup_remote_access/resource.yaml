@@ -1,0 +1,28 @@
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: good-plan
+terraform_version: "1.8.4"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_eks_node_group
+        values:
+          remote_access:
+            - ec2_ssh_key: "my-key"
+              source_security_group_ids:
+                - "sg-12345"
+---
+apiVersion: terraform.io/v1
+kind: Plan
+metadata:
+  name: bad-plan
+terraform_version: "1.8.4"
+planned_values:
+  root_module:
+    resources:
+      - type: aws_eks_node_group
+        values:
+          remote_access:
+            - ec2_ssh_key: "my-key"
+              source_security_group_ids: []

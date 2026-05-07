@@ -1,0 +1,19 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disable-s3-access-control-list
+policies:
+  - policy.yaml
+resources:
+  - resource.yaml
+results:
+  - policy: disable-s3-access-control-list
+    kind: Plan
+    resources:
+      - good-plan
+    result: pass
+  - policy: disable-s3-access-control-list
+    kind: Plan
+    resources:
+      - bad-plan
+    result: fail

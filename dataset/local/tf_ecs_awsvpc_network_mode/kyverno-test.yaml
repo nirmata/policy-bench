@@ -1,0 +1,19 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: check-awsvpc-network-mode
+policies:
+  - policy.yaml
+resources:
+  - resource.yaml
+results:
+  - policy: check-awsvpc-network-mode
+    kind: Plan
+    resources:
+      - good-plan
+    result: pass
+  - policy: check-awsvpc-network-mode
+    kind: Plan
+    resources:
+      - bad-plan
+    result: fail

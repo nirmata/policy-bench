@@ -1,0 +1,19 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: validate-any-principal
+policies:
+  - policy.yaml
+resources:
+  - resource.yaml
+results:
+  - policy: validate-any-principal
+    kind: Plan
+    resources:
+      - good-plan
+    result: pass
+  - policy: validate-any-principal
+    kind: Plan
+    resources:
+      - bad-plan
+    result: fail

@@ -1,0 +1,23 @@
+apiVersion: dockerfile.kyverno.io/v1
+kind: Dockerfile
+metadata:
+  name: good-dockerfile
+Stages:
+  - BaseName: ubuntu:22.04
+    Commands:
+      - Name: RUN
+        CmdLine:
+          - "pip3 install numpy"
+        PrependShell: true
+---
+apiVersion: dockerfile.kyverno.io/v1
+kind: Dockerfile
+metadata:
+  name: bad-dockerfile
+Stages:
+  - BaseName: ubuntu:22.04
+    Commands:
+      - Name: RUN
+        CmdLine:
+          - "pip3 install --trusted-host pypi.org numpy"
+        PrependShell: true

@@ -68,21 +68,31 @@ def _load_results(include_files: list[str] | None = None) -> list[dict]:
 def _deduplicate_runs(results: list[dict]) -> list[dict]:
     """If multiple runs exist for the same (tool, policy_id, task_type), keep the best one.
 
-    Prefers records that carry a ``runs`` array (multi-run aggregated data)
-    over plain single-run records.  Among candidates of the same kind, the
-    latest by ``timestamp`` wins.
+    Picks the entry whose data is newest, using the latest sub-run timestamp for
+    merged entries (so a stale benchmark_latest.json never beats a newer single run).
+    A ``runs``-array entry wins over a plain single-run entry only as a tiebreaker
+    when both represent the same point in time.
     """
     groups: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
     for r in results:
         key = (r.get("tool", ""), r.get("policy_id", ""), r.get("task_type", "convert"))
         groups[key].append(r)
 
+    def _effective_ts(r: dict) -> str:
+        """Latest timestamp in this entry, looking inside sub-runs for merged records."""
+        ts = r.get("timestamp", "")
+        for sub in r.get("runs", []):
+            sub_ts = sub.get("timestamp", "")
+            if sub_ts > ts:
+                ts = sub_ts
+        return ts
+
     def _best(runs: list[dict]) -> dict:
-        # Prefer records with 'runs' array (multi-run aggregated)
-        with_runs = [r for r in runs if r.get("runs")]
-        pool = with_runs if with_runs else runs
-        timestamped = [(r.get("timestamp", ""), r) for r in pool]
-        return max(timestamped, key=lambda t: t[0])[1]
+        # Sort by (effective timestamp, has-runs tiebreaker, n_runs) — all descending
+        return max(
+            runs,
+            key=lambda r: (_effective_ts(r), bool(r.get("runs")), r.get("n_runs_aggregated", 0)),
+        )
 
     return [_best(runs) for runs in groups.values()]
 

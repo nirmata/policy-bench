@@ -1,0 +1,12 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Context
+metadata:
+  name: context
+spec:
+  images:
+  - image: nvidia/cuda:12.2.0-devel-ubi8
+    config:
+      Env: []
+  - image: busybox:1.28
+    config:
+      Env: []

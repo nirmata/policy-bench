@@ -421,7 +421,7 @@ policies:
   task_type: generate_chainsaw_test
   difficulty: medium
   expected_output_kind: null
-  path: local/chainsaw-source-policy.yaml
+  path: imported/kyverno-policies/cp_require_resource_limits.yaml
   chainsaw_reference_dir: local/chainsaw/ch_kyverno_helm_install
   description: generate one Chainsaw test set with exactly two scenarios for Kyverno Helm install; scenario A must pass with policy smoke test and scenario B must fail with invalid image/resource pressure as expected
 # Dockerfile track

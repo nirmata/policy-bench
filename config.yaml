@@ -90,7 +90,7 @@ task_types:
 
 evaluation:
   skip_kyverno_test: false
-  timeout_seconds: 1800
+  timeout_seconds: 600
 
 # Leaderboard ranked by pass_rate (schema + CEL + functional).
 # Speed and cost reported as separate supplementary metrics.

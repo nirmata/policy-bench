@@ -1,0 +1,54 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Context
+metadata:
+  name: context
+spec:
+  resources:
+    - apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: existing-ingress-github
+      spec:
+        rules:
+          - host: www.github.com
+            http:
+              paths:
+                - pathType: Prefix
+                  path: /
+                  backend:
+                    service:
+                      name: github-svc
+                      port:
+                        number: 80
+    - apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: existing-ingress-kyverno
+      spec:
+        rules:
+          - host: www.kyverno.com
+            http:
+              paths:
+                - pathType: Prefix
+                  path: /
+                  backend:
+                    service:
+                      name: kyverno-svc
+                      port:
+                        number: 80
+    - apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: existing-ingress-nirmata
+      spec:
+        rules:
+          - host: www.nirmata.com
+            http:
+              paths:
+                - pathType: Prefix
+                  path: /
+                  backend:
+                    service:
+                      name: nirmata-svc
+                      port:
+                        number: 80

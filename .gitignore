@@ -43,4 +43,6 @@ dataset/.cache/
 dataset/imported/**
 !dataset/imported/README.md
 !dataset/imported/upstream-meta.json
+!dataset/imported/kyverno-tests/
+!dataset/imported/kyverno-tests/**
 .gitnexus
